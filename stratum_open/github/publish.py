@@ -90,6 +90,13 @@ class State:
     ignored_rules: list[str] = field(default_factory=list)
     triage: dict[str, Any] = field(default_factory=dict)
     unread: list[str] = field(default_factory=list)  # paths the model hasn't read at `head` (paths, not passes: each goes through every pass again)
+    # For each path in `unread`, in the same order: how many reviews of `head` sent it and got
+    # an answer that was cut off or wasn't the JSON asked for. A list, not a map, to keep the
+    # comment small; it's dropped on decode when it doesn't match `unread`.
+    tries: list[int] = field(default_factory=list)
+
+    def tries_by_path(self) -> dict[str, int]:
+        return dict(zip(self.unread, self.tries)) if len(self.tries) == len(self.unread) else {}
 
     def encode(self) -> str:
         data = asdict(self)
@@ -111,6 +118,7 @@ class State:
                 ignored_rules=[str(x) for x in data.get("ignored_rules", [])],
                 triage=data.get("triage") if isinstance(data.get("triage"), dict) else {},
                 unread=[str(x) for x in data.get("unread", []) if isinstance(x, str)],
+                tries=[n for n in data.get("tries", []) if isinstance(n, int) and not isinstance(n, bool) and n >= 0],
             )
         except (ValueError, TypeError, AttributeError):
             return cls()

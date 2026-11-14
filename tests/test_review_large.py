@@ -297,6 +297,37 @@ def test_verify_checks_the_per_file_passes_findings_too():
     assert any(c.get("pass") == "verify" for c in result.large.calls)
 
 
+def test_files_whose_every_answer_is_unusable_stop_being_sent_on_one_commit():
+    # #59: on the same commit, each event paid for every per-file and chunked call again.
+    from fakes import FakeGitHub
+
+    from stratum_open.runner import Context, review_pull
+
+    gh = FakeGitHub(diff=DIFF)
+    calls, lines = [], []
+    for _ in range(3):
+        model = FakeModel(*["not json"] * 30)
+        review_pull(Context(gh=gh, policy=parse_policy("review:\n  profile: large\n  parallel_calls: 1\n  lens_files: 0\n"),
+                            model=model, bot="stratum[bot]", log=lambda line: None), 7)
+        calls.append(len(model.prompts))
+        lines.append([line for line in gh.issue_comments_[7][0]["body"].splitlines() if "per-file model calls failed" in line])
+    assert calls == [5, 5, 0]
+    assert lines[0] == ["- 3 of 3 per-file model calls failed; the next review reads again the ones the chunked review didn't read in full either."]
+    assert lines[1] == ["- 3 of 3 per-file model calls failed; the chunked review didn't read those files in full either."]
+
+
+def test_unusable_is_only_what_the_model_answered():
+    from stratum_open.review_large import LargeReview
+
+    large = LargeReview(calls=[
+        {"pass": "file", "path": "a.py", "ok": True, "error": "the reply wasn't the JSON asked for"},
+        {"pass": "file", "path": "b.py", "ok": True, "error": "", "salvaged": True},
+        {"pass": "file", "path": "c.py", "ok": False, "error": "couldn't reach the model: ConnectTimeout"},
+        {"pass": "file", "path": "d.py", "ok": True, "error": ""},
+    ])
+    assert (large.unread, large.unusable) == ({"a.py", "b.py", "c.py"}, {"a.py", "b.py"})
+
+
 def test_unread_names_the_files_whose_per_file_call_failed_or_was_cut_off():
     from stratum_open.review_large import LargeReview
 

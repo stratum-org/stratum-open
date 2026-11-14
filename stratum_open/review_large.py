@@ -175,6 +175,15 @@ class LargeReview:
         return {c["path"] for c in self.calls
                 if c.get("pass") in ("file", "lens") and c.get("path") and (c.get("error") or c.get("salvaged"))}
 
+    @property
+    def unusable(self) -> set[str]:
+        """Of `unread`, the paths whose call the model answered, but with a
+        reply cut off or not the JSON asked for: likely to happen again for
+        the same file, unlike a model that couldn't be reached. ("ok" is
+        whether the model answered; a reply it couldn't use adds the error.)"""
+        return {c["path"] for c in self.calls if c.get("pass") in ("file", "lens") and c.get("path") and c.get("ok")
+                and (c.get("error") or c.get("salvaged"))}
+
 
 @dataclass
 class _Task:

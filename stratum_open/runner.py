@@ -38,6 +38,11 @@ MAX_REVIEW_TEXT_FILES = 20  # files whose text is fetched for review.context_lin
 # The JSON size of the unread paths kept in the summary's state (about 60 paths), so they don't crowd the
 # findings out of the comment; past it, the next run reads everything since the old head.
 MAX_UNREAD_BYTES = 4000
+# Reviews of one commit that may send a file and get back an answer cut off or not the JSON asked
+# for. Every event on a commit (CI finishing, a reopen, a re-run) reviews it again, and an answer
+# like that tends to repeat for the same input, so after these the file waits for a push or for
+# `/stratum review`. A model that couldn't be reached doesn't count: an outage passes.
+MAX_UNUSABLE_TRIES = 2
 
 
 @dataclass
@@ -128,9 +133,12 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
     changed = None if full else since
     # `unread` records paths, not passes: a file read again goes through every
     # pass (per-file, lenses, chunked, verify, synthesis), even if one failed.
+    # The tries count only on the commit they were made on, and `/stratum
+    # review` (a full review) starts them again.
+    tries = state.tries_by_path() if state.head == head and not full else {}
     retried: set[str] = set()
     if changed is not None and reads:
-        retried = (set(state.unread) & set(paths)) - changed
+        retried = (set(state.unread) & set(paths)) - changed - {p for p, n in tries.items() if n >= MAX_UNUSABLE_TRIES}
         changed = changed | retried
     incremental = changed is not None
 
@@ -175,14 +183,21 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
     elif ctx.model is None:
         problems.append("No model is configured, so this review has only the checks.")
     large = engine.large
+    # The files sent this time whose answer came back cut off or not the JSON asked for, each
+    # with the reviews of this commit that have now had such an answer for it.
+    unusable = engine.unread & ((result.unusable if result else set()) | (large.unusable if large else set()))
+    counted = {p: tries.get(p, 0) + 1 for p in unusable}
     if large is not None:
         file_calls = [c for c in large.calls if c.get("pass") != "synthesis"]
         if large.failed_calls:
-            # A file the chunked review read in full isn't unread; one it didn't read is read again next time.
-            covered = not (large.unread & engine.unread)
+            # A file the chunked review read in full isn't unread; one it didn't read is read again next time,
+            # unless it has used up its tries on this commit.
+            missed = large.unread & engine.unread
+            again = {p for p in missed if counted.get(p, 0) < MAX_UNUSABLE_TRIES}
             problems.append(f"{large.failed_calls} of {len(file_calls)} per-file model calls failed; "
-                            + ("the chunked review still covered those files." if covered
-                               else "the next review reads again the ones the chunked review didn't read in full either."))
+                            + ("the chunked review still covered those files." if not missed
+                               else "the next review reads again the ones the chunked review didn't read in full either." if again
+                               else "the chunked review didn't read those files in full either."))
         if large.salvaged_calls:
             problems.append(f"{large.salvaged_calls} of the per-file replies were cut off; anything found after the cut is missing.")
 
@@ -202,11 +217,19 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
         left = engine.unread | (set(state.unread) - read - set(packed.omitted if packed else []))
     by_path = {f.path: f for f in files}
     unread = sorted(p for p in left if p in by_path and sendable(by_path[p], policy.ignored))
-    waiting = len(set(unread) - engine.unread) if ctx.model is not None else 0
+    # A file not sent this time keeps its count; one whose call failed some other way, too.
+    unread_tries = [counted.get(p, tries.get(p, 0)) for p in unread]
+    stopped = [p for p, n in zip(unread, unread_tries) if n >= MAX_UNUSABLE_TRIES] if ctx.model is not None else []
+    waiting = len(set(unread) - engine.unread - set(stopped)) if ctx.model is not None else 0
     if waiting:
         problems.append(f"The model hasn't read {_files(waiting)} yet; the next review reads {'it' if waiting == 1 else 'them'}.")
+    if stopped:
+        named = ", ".join(f"`{p}`" for p in stopped[:10]) + (f" and {len(stopped) - 10} more" if len(stopped) > 10 else "")
+        problems.append(f"Stopped sending {named} to the model on this commit: {'its answer' if len(stopped) == 1 else 'their answers'} "
+                        f"came back cut off or not the JSON asked for {MAX_UNUSABLE_TRIES} times. "
+                        "Push a commit, or comment `/stratum review`, to try again.")
     # A review that left files unread isn't complete, whichever run failed to read them.
-    complete = engine.complete and not waiting
+    complete = engine.complete and not waiting and not stopped
 
     facts = PRFacts.from_pull(pull, paths)
     try:
@@ -271,10 +294,11 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
     # and its `unread` instead, so the next run reads everything since it.
     # (Whatever failed this time was either changed since the old head or
     # already in its `unread`; anything else was read at the old head.)
-    keep_head = len(json.dumps(unread)) > MAX_UNREAD_BYTES
+    keep_head = len(json.dumps(unread)) + len(json.dumps(unread_tries)) > MAX_UNREAD_BYTES
     new_state = publish.State(
         head=state.head if keep_head else head,
         unread=state.unread if keep_head else unread,
+        tries=state.tries if keep_head else unread_tries,
         findings=[publish.state_finding(f, snippet_of(f, files)) for f in findings if f.source == "model"],
         ignored=state.ignored, ignored_rules=state.ignored_rules,
         triage={**sorted_pr.as_dict(), "additions": facts.additions, "deletions": facts.deletions},

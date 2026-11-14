@@ -208,12 +208,19 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
     # A review that left files unread isn't complete, whichever run failed to read them.
     complete = engine.complete and not waiting
 
+    # Each on its own: a failed CI lookup mustn't cost the linked issues. A
+    # failed one is unknown, never "none": CI stays None (as if pending), and
+    # the linked issues None, so the PR isn't called unlinked, or closed for it.
     facts = PRFacts.from_pull(pull, paths)
     try:
         facts.ci_ok = gh.ci_state(head, ignore={policy.review.check_name, *ctx.own_checks})
+    except GitHubError as exc:
+        problems.append(f"Couldn't read the CI status ({exc.status}).")
+    try:
         facts.linked_issues = gh.linked_issues(number)
     except GitHubError as exc:
-        problems.append(f"Couldn't read CI status or linked issues ({exc.status}).")
+        facts.linked_issues = None
+        problems.append(f"Couldn't read the linked issues ({exc.status}), so triage doesn't count them either way.")
 
     # Each `/stratum` command runs on its own, so an `ignore` can land while
     # this review was reading the PR: read the summary again before writing
@@ -330,7 +337,8 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
         try:
             labels = [label.get("name", "") for label in pull.get("labels") or [] if isinstance(label, dict)]
             publish.apply_label(gh, number, policy, sorted_pr.key, labels)
-            if policy.triage.close_without_issue and policy.triage.require_linked_issue and not facts.linked_issues and sorted_pr.key != "needs_human":
+            # Only on a lookup that worked and found none: a failed one is no reason to close a PR.
+            if policy.triage.close_without_issue and policy.triage.require_linked_issue and facts.unlinked and sorted_pr.key != "needs_human":
                 gh.comment(number, "Closing this PR: this project asks for every PR to link an issue (`Fixes #123`), and this one doesn't. "
                                    "Link one and reopen it, or ask a maintainer. Closed by Stratum under the project's `.stratum/policy.yml`.")
                 gh.close(number)

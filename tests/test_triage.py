@@ -53,6 +53,20 @@ def test_required_issue():
     assert triage(facts(linked_issues=[]), [], policy).reasons == ["No linked issue, and this project asks for one."]
 
 
+def test_linked_issues_that_couldnt_be_read_count_neither_way():
+    # #122: a failed lookup (None) isn't "no linked issue": no reason, no low-effort signal, and no evidence either.
+    policy = parse_policy("triage:\n  require_linked_issue: true\n  label_low_effort: true\n")
+    unknown = facts(body="", linked_issues=None, paths=["src/dates.py"])
+    result = triage(unknown, [], policy)
+    assert result.key == "ready" and result.reasons == []
+    assert not any("Linked to" in line for line in result.evidence)
+    # The same PR with a lookup that found nothing has three low-effort signals, the linked issue one of them.
+    low = parse_policy("triage:\n  label_low_effort: true\n")
+    assert triage(facts(body="", linked_issues=[], paths=["src/dates.py"]), [], low).key == "low_effort"
+    assert triage(unknown, [], low).key == "ready"
+    assert (facts(linked_issues=[]).unlinked, facts(linked_issues=None).unlinked, facts(linked_issues=[3]).unlinked) == (True, False, False)
+
+
 def test_track_record_counts_only_when_the_policy_says_so():
     when = datetime(2026, 10, 1, tzinfo=timezone.utc)
     prs = [MergedPR(n, f"{n:040x}", "dana", when, f"PR {n}") for n in range(1, 5)]

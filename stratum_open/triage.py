@@ -46,7 +46,13 @@ class PRFacts:
     deletions: int
     paths: list[str]
     ci_ok: bool | None = None  # None = pending or no CI
-    linked_issues: list[int] = field(default_factory=list)
+    # None = the lookup failed, so it isn't known whether the PR links one: never read as "no linked issue".
+    linked_issues: list[int] | None = field(default_factory=list)
+
+    @property
+    def unlinked(self) -> bool:
+        """The lookup worked, and the PR links no issue."""
+        return self.linked_issues == []
 
     @classmethod
     def from_pull(cls, pull: dict, paths: list[str]) -> PRFacts:
@@ -103,7 +109,7 @@ def triage(
     blocking = [f for f in findings if f.severity == "critical" or (f.source == "check" and f.blocking and not f.needs_human)]
     if blocking:
         needs_work.append(f"{count(len(blocking), 'serious finding')} to fix: " + "; ".join(sorted({f.title for f in blocking}))[:200] + ".")
-    if policy.triage.require_linked_issue and not facts.linked_issues:
+    if policy.triage.require_linked_issue and facts.unlinked:
         needs_work.append("No linked issue, and this project asks for one.")
     if matches_description == "no":
         needs_work.append("The code doesn't do what the description says" + (f": {mismatch}" if mismatch else "."))
@@ -116,7 +122,7 @@ def triage(
     low_effort = []
     if not described:
         low_effort.append("The description is empty or only a few words.")
-    if not facts.linked_issues:
+    if facts.unlinked:
         low_effort.append("No linked issue.")
     if code_paths and not tests_changed:
         low_effort.append("Code changed with no test changes.")

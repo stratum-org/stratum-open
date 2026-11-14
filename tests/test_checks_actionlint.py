@@ -225,7 +225,7 @@ def test_with_the_key_on_the_summary_names_workflows_actionlint_didnt_read(monke
     gh = FakeGitHub(diff=new_file(FLOW, WORKFLOW) + new_file(big, "on: push"), files={(FLOW, "a" * 40): WORKFLOW, (big, "a" * 40): "on: push\n" + "#\n" * 200})
     outcome = review_pull(Context(gh=gh, policy=ON, model=None, bot="stratum[bot]", log=lambda line: None), 7)
     assert "actionlint/job-needs" in {f.rule for f in outcome.findings} and [sorted(s) for s in sent] == [[FLOW]]
-    assert f"Not read by actionlint (1 file past its limit of 20, too long, or without their text): `{big}`" in gh.issue_comments_[7][-1]["body"]
+    assert f"Not read by actionlint: 1 file over 300 characters (`{big}`)" in gh.issue_comments_[7][-1]["body"]
 
 
 # ── the real actionlint ──────────────────────────────────────────────────

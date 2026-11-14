@@ -294,7 +294,7 @@ def test_the_summary_names_scripts_shellcheck_didnt_read(monkeypatch):
     text = diff("ci/small.sh", ["x=1"]) + diff("ci/big.sh", ["y=2"])
     gh = FakeGitHub(diff=text, files={("ci/small.sh", "a" * 40): "x=1\n", ("ci/big.sh", "a" * 40): "y=2\n" + "# pad\n" * 10})
     review_pull(Context(gh=gh, policy=ON, model=None, bot="stratum[bot]", log=lambda line: None), 7)
-    assert "Not read by ShellCheck (1 file past its limit of 20, too long, or without their text): `ci/big.sh`" in gh.issue_comments_[7][-1]["body"]
+    assert "Not read by ShellCheck: 1 file over 20 characters (`ci/big.sh`)" in gh.issue_comments_[7][-1]["body"]
 
 
 # ── the real ShellCheck ──────────────────────────────────────────────────

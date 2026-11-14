@@ -917,7 +917,7 @@ def test_twenty_moves_dont_push_the_prs_own_code_out_of_bandit(monkeypatch):
     outcome = review_pull(context(gh, None), 7)
     assert "bandit/B301" in {f.rule for f in outcome.findings}
     assert "app/load.py" in sent[0] and len(sent[0]) == 20
-    assert "Not read by Bandit (1 file past its limit of 20, or without their text): `src/h19.py`" in gh.issue_comments_[7][-1]["body"]
+    assert "Not read by Bandit: 1 file past its limit of 20 (`src/h19.py`)" in gh.issue_comments_[7][-1]["body"]
 
 
 def test_edited_tests_dont_push_the_code_out_of_bandits_files(monkeypatch):
@@ -941,6 +941,90 @@ def test_a_moved_file_too_big_to_fetch_is_named_as_unread(monkeypatch):
     gh = FakeGitHub(diff=moved("tests/helper.py", "app/helper.py"), files={("app/helper.py", "a" * 40): "def f(request):\n    eval(request.args['x'])\n"})
     outcome = review_pull(context(gh, None), 7)
     assert {f.rule for f in outcome.findings} == {"checks/moved-unread"}
+
+
+def new_file(path, lines):
+    return (f"diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1,{len(lines)} @@\n"
+            + "".join(f"+{line}\n" for line in lines))
+
+
+def test_a_file_moved_with_edits_doesnt_push_edited_code_out_of_bandits_files(monkeypatch):
+    # #81: the fetch order ranked Python files by lines added alone, so a big move took an edited file's place.
+    sent = []
+    monkeypatch.setattr("stratum_open.checks.bandit.available", lambda: True)
+    monkeypatch.setattr("stratum_open.checks.bandit.run_bandit", lambda sources: sent.append(set(sources)) or [])
+    edited = {f"app/m{i:02}.py": ["import pickle", "pickle.loads(data)"] for i in range(20)}
+    old = [f"x{i} = {i}" for i in range(10)]
+    new = old + [f"y{i} = {i}" for i in range(52)]
+    rename = ("diff --git a/tests/big.py b/app/big.py\nsimilarity index 60%\nrename from tests/big.py\nrename to app/big.py\n"
+              f"--- a/tests/big.py\n+++ b/app/big.py\n@@ -10,1 +10,53 @@\n {old[-1]}\n" + "".join(f"+{line}\n" for line in new[10:]))
+    files = {**{(p, "a" * 40): "\n".join(lines) + "\n" for p, lines in edited.items()}, ("app/big.py", "a" * 40): "\n".join(new) + "\n"}
+    gh = FakeGitHub(diff="".join(new_file(p, lines) for p, lines in edited.items()) + rename, files=files)
+    review_pull(context(gh, None), 7)
+    assert sent == [set(edited)]
+    assert "Not read by Bandit: 1 file past its limit of 20 (`app/big.py`)" in gh.issue_comments_[7][-1]["body"]
+
+
+BLOB = "\0\x01not text"
+EVAL_JS = "function f(req) { eval(req.query.x); }\n"
+
+
+def test_moved_binary_files_dont_take_the_places_of_moved_code(monkeypatch):
+    # #81: twenty binary files with an extension no list knows used up the twenty places before the NUL test.
+    monkeypatch.setattr("stratum_open.checks.bandit.available", lambda: False)
+    blobs = {f"app/a{i:02}.dat": BLOB for i in range(20)}
+    code = {"app/x.js": EVAL_JS, "app/x.py": "def f(request):\n    eval(request.args['x'])\n"}
+    diff = "".join(moved(p.replace("app/", "tests/"), p) for p in [*blobs, *code])
+    gh = FakeGitHub(diff=diff, files={(p, "a" * 40): t for p, t in {**blobs, **code}.items()})
+    outcome = review_pull(context(gh, None), 7)
+    assert {(f.path, f.rule) for f in outcome.findings} == {("app/x.js", "code/eval"), ("app/x.py", "code/eval")}
+
+
+def test_moved_files_the_checks_gain_most_on_are_read_first(monkeypatch):
+    monkeypatch.setattr("stratum_open.runner.MAX_MOVED_FILES", 1)
+    notes = {f"app/n{i}.dat": "plain text" for i in range(3)}
+    diff = "".join(moved(p.replace("app/", "tests/"), p) for p in notes) + moved("tests/x.js", "app/x.js")
+    gh = FakeGitHub(diff=diff, files={(p, "a" * 40): t for p, t in {**notes, "app/x.js": EVAL_JS}.items()})
+    outcome = review_pull(context(gh, None), 7)
+    assert "code/eval" in {f.rule for f in outcome.findings}
+    [unread] = [f for f in outcome.findings if f.rule == "checks/moved-unread"]
+    assert all(f"`{p}`" in unread.detail for p in notes)
+
+
+def test_moved_files_are_tried_only_so_many_times(monkeypatch):
+    monkeypatch.setattr("stratum_open.runner.MAX_MOVED_FILES", 2)
+    monkeypatch.setattr("stratum_open.runner.MAX_MOVED_TRIES", 3)
+    blobs = {f"app/b{i}.js": BLOB for i in range(5)}
+    asked = []
+
+    class Counting(FakeGitHub):
+        def file_text(self, path, ref, *, max_bytes=None):
+            asked.append(path)
+            return super().file_text(path, ref, max_bytes=max_bytes)
+
+    gh = Counting(diff="".join(moved(p.replace("app/", "tests/"), p) for p in blobs), files={(p, "a" * 40): t for p, t in blobs.items()})
+    outcome = review_pull(context(gh, None), 7)
+    assert asked == ["app/b0.js", "app/b1.js", "app/b2.js"]
+    [unread] = [f for f in outcome.findings if f.rule == "checks/moved-unread"]
+    assert "`app/b3.js`" in unread.detail and "`app/b0.js`" not in unread.detail
+
+
+def test_a_moved_page_template_is_read_as_text():
+    gh = FakeGitHub(diff=moved("tests/fixtures/page.pt", "app/page.pt"),
+                    files={("app/page.pt", "a" * 40): "<p>${password}</p>\npassword = 'hunter2hunter2'\n"})
+    outcome = review_pull(context(gh, None), 7)
+    assert "code/secret" in {f.rule for f in outcome.findings}
+
+
+def test_the_coverage_line_gives_each_reason_its_own_files(monkeypatch):
+    monkeypatch.setattr("stratum_open.checks.bandit.available", lambda: True)
+    monkeypatch.setattr("stratum_open.checks.bandit.run_bandit", lambda sources: [])
+    monkeypatch.setattr("stratum_open.checks.bandit.MAX_FILES", 1)
+    diff = "".join(new_file(f"app/{name}.py", ["x = 1"]) for name in ("a", "b", "c"))
+    gh = FakeGitHub(diff=diff, files={("app/a.py", "a" * 40): "x = 1\n", ("app/b.py", "a" * 40): "x = 1\n"})  # no text for c
+    review_pull(context(gh, None), 7)
+    assert ("Not read by Bandit: 1 file past its limit of 1 (`app/b.py`); 1 file whose text Stratum didn't have (`app/c.py`)"
+            in gh.issue_comments_[7][-1]["body"])
 
 
 def test_a_name_its_module_doesnt_define_is_reported_when_the_policy_asks(tmp_path):

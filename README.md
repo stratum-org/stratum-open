@@ -208,7 +208,13 @@ The command is now `stratum-open`, or `python -m stratum_open`; it was `stratum`
 
 Comment commands are now written `/stratum review`, `/stratum ignore` and so on (see [Commands](#commands)); `@stratum review` no longer does anything. If you copied [examples/stratum.yml](examples/stratum.yml), update its job's `if:` filter, or `/stratum` comments won't start the job: replace `contains(github.event.comment.body, '@stratum')` with `contains(github.event.comment.body, '/stratum ')`. The GitHub App needs no change. Inline comments from 0.2 say "Reply `@stratum ignore`"; the next review of the PR rewrites that hint as `/stratum ignore`.
 
-If your code embeds the engine (`stratum_open.analyze`): a check's finding can now have a line the diff doesn't show, when a file moves to where a check does more (out of `tests/`, or into `.github/workflows/`) and the check reads all of it. GitHub refuses an inline comment on such a line. Post inline only the findings `stratum_open.placeable(findings, files)` returns, and list the rest in the summary.
+If your code embeds the engine (`stratum_open.analyze`): a file that moves to where a check does more (out of `tests/`, into `.github/workflows/`, or to a manifest's or an `action.yml`'s path) is now checked in full, since every line of it is new where it now is. Three things follow:
+
+- **Pass those files' text in `contents`.** `stratum_open.moved_in(file)` says which files they are. A moved file without its text gets one `checks/moved-unread` finding naming it, since the checks could read only the lines the diff marks as added.
+- **Leave out the binary ones.** A move with no edits looks the same in a diff whether the file is text or not. When `stratum_open.looks_binary(text)` is true, don't pass the text; set `file.binary = True` instead. Text from an image or an archive passed in `contents` can match the secret rules.
+- **Post inline only what can take a comment.** A check's finding can now have a line the diff doesn't show, and GitHub refuses an inline comment there. Post inline only the findings `stratum_open.placeable(findings, files)` returns, and list the rest in the summary.
+
+In 0.3.0 itself the two helpers are `stratum_open.checks.moved_in` and `stratum_open.checks.common.looks_binary`.
 
 ## Stratum Open and hosted Stratum
 

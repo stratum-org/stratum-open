@@ -11,12 +11,13 @@ from __future__ import annotations
 from typing import Callable
 
 from stratum_open.checks import actionlint, agents, awaits, bandit, common, dependencies, heuristics, paths, patterns, promises, ruff, shellcheck, tests_weakened, workflows
+from stratum_open.checks.common import looks_binary
 from stratum_open.checks.dependencies import PackageInfo, PackageLookup
 from stratum_open.diff import FileDiff
 from stratum_open.findings import Finding
 from stratum_open.policy import Policy
 
-__all__ = ["PackageInfo", "PackageLookup", "moved_in", "run_checks"]
+__all__ = ["PackageInfo", "PackageLookup", "gained", "looks_binary", "moved_in", "run_checks"]
 
 # The checks here whose rules depend on a file's path. Of the others, hidden
 # Unicode looks at every path, and protected paths and coding-agent files at
@@ -30,6 +31,16 @@ def moved_in(file: FileDiff) -> bool:
     """Whether a rename brought the file to where some check does more than
     where it was, so that check reads all of it, and needs its text."""
     return any(common.moved_in(file, scope) for scope in _SCOPES)
+
+
+def gained(file: FileDiff) -> int:
+    """How many more rules the checks have for the file where it moved than
+    where it was: 0 unless it moved in. Code moved out of `tests/` gains
+    several; a data file of a type no check knows, only the secret rules. The
+    files that gain most are the ones to read first."""
+    if not moved_in(file):
+        return 0
+    return sum(len(scope(file.path) - scope(file.old_path or "")) for scope in _SCOPES)
 
 
 def run_checks(

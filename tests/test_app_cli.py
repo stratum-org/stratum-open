@@ -193,6 +193,39 @@ def test_review_local_skips_a_moved_binary_file(tmp_path, capsys, monkeypatch):
     assert code == 0
 
 
+def test_review_local_reads_the_code_before_forty_edited_tests(tmp_path, capsys, monkeypatch):
+    # #81: the local review read the first 40 files in diff order, and `tests/` sorts before `web/`.
+    empty = tmp_path / "gitconfig"
+    empty.write_text("")
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": str(empty), "GIT_CONFIG_NOSYSTEM": "1",
+           "GIT_AUTHOR_NAME": "a", "GIT_AUTHOR_EMAIL": "a@example.com", "GIT_COMMITTER_NAME": "a", "GIT_COMMITTER_EMAIL": "a@example.com"}
+    repo = tmp_path / "repo"
+    (repo / "tests").mkdir(parents=True)
+    (repo / "web").mkdir()
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, env=env)
+
+    git("init", "-q", "-b", "main")
+    (repo / "README.md").write_text("x\n")
+    git("add", ".")
+    git("commit", "-q", "-m", "init")
+    git("checkout", "-q", "-b", "feature")
+    for i in range(40):
+        (repo / "tests" / f"test_t{i:02}.py").write_text("".join(f"t{j} = {j}\n" for j in range(5)))
+    (repo / "web" / "load.py").write_text("import pickle\n\ndef load(data):\n    return pickle.loads(data)\n")
+    git("add", ".")
+    git("commit", "-q", "-m", "Add tests and a loader")
+    sent = []
+    monkeypatch.setattr("stratum_open.checks.bandit.available", lambda: True)
+    monkeypatch.setattr("stratum_open.checks.bandit.run_bandit", lambda sources: sent.append(set(sources)) or [])
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
+    cli.main(["review", "--local", "main", "--no-model"])
+    capsys.readouterr()
+    assert sent == [{"web/load.py"}]
+
+
 def test_data_commands(tmp_path, capsys):
     db = str(tmp_path / "s.db")
     storage = SQLiteStorage(db)

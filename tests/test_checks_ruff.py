@@ -292,7 +292,7 @@ def test_the_summary_names_files_ruff_didnt_read(monkeypatch):
     text = diff("app/small.py", ["x = 1"]) + diff("app/big.py", ["y = 2"])
     gh = FakeGitHub(diff=text, files={("app/small.py", "a" * 40): "x = 1\n", ("app/big.py", "a" * 40): "y = 2\n" + "# pad\n" * 10})
     review_pull(Context(gh=gh, policy=ON, model=None, bot="stratum[bot]", log=lambda line: None), 7)
-    assert "Not read by Ruff (1 file past its limit of 20, too long, or without their text): `app/big.py`" in gh.issue_comments_[7][-1]["body"]
+    assert "Not read by Ruff: 1 file over 20 characters (`app/big.py`)" in gh.issue_comments_[7][-1]["body"]
 
 
 def test_every_rule_has_one_planted_case():

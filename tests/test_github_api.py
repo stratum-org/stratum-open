@@ -34,6 +34,23 @@ def test_review_threads_carry_rest_style_logins(monkeypatch):
     assert thread_fingerprint(thread, "github-actions[bot]") == "0123456789ab"
 
 
+def test_file_text_leaves_out_a_file_over_max_bytes_without_downloading_it(monkeypatch):
+    import base64
+
+    gh = GitHub("t", "acme/widget")
+    small = {"type": "file", "size": 6, "encoding": "base64", "content": base64.b64encode(b"x = 1\n").decode()}
+    # GitHub sends a file over 1 MB with no content, only its size and where to download it.
+    big = {"type": "file", "size": 2_000_000, "encoding": "none", "content": "", "download_url": "https://raw.example/big.py"}
+    monkeypatch.setattr(gh, "request", lambda method, url, **kw: big if url.endswith("big.py") else small)
+    downloads = []
+    monkeypatch.setattr(gh.session, "get", lambda url, **kw: downloads.append(url))
+    assert gh.file_text("app/big.py", "a" * 40, max_bytes=1_000_000) is None
+    assert downloads == []
+    assert gh.file_text("app/small.py", "a" * 40, max_bytes=1_000_000) == "x = 1\n"
+    assert gh.file_text("app/small.py", "a" * 40, max_bytes=5) is None
+    assert gh.file_text("app/small.py", "a" * 40) == "x = 1\n"
+
+
 def test_a_too_big_diff_keeps_a_move_as_a_move(monkeypatch):
     from stratum_open.diff import parse_diff
     from stratum_open.github.api import GitHubError

@@ -28,7 +28,7 @@ from stratum_open.profiles import model_settings_line
 from stratum_open.track_record import author_identity, build_records, describe_subprocess_error
 
 _PR = re.compile(r"(?:https://github\.com/)?([\w.-]+/[\w.-]+)(?:/pull/|#)(\d+)/?$")
-MAX_LOCAL_CONTENTS = 40  # files whose full text the checks get on a local review
+MAX_LOCAL_CONTENTS = 40  # files whose full text a local review reads, once it has read what a review on GitHub would
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -180,6 +180,7 @@ def _review_local(args, base: str) -> int:
     from stratum_open.repo.boundaries import boundary_findings
     from stratum_open.repo.removed_names import removed_name_findings
     from stratum_open.repo.unknown_names import unknown_name_findings
+    from stratum_open.runner import read_contents, to_read
 
     try:
         # The flags keep out what the user's git config can change: an external
@@ -197,10 +198,18 @@ def _review_local(args, base: str) -> int:
     _policy_notes(policy)
     model = None if args.no_model else model_from_policy(policy)
     # The checks read whole files where the diff isn't enough (workflows,
-    # manifests, Bandit), as they do on GitHub.
-    contents = {}
-    for file in [f for f in files if f.status != "deleted" and not f.binary][:MAX_LOCAL_CONTENTS]:
+    # manifests, Bandit, moved files), in the order and to the limits they do
+    # on GitHub; then the other changed files, up to MAX_LOCAL_CONTENTS in all.
+    def read(file, max_bytes=None):
         text = _git_or_none(".", "show", f"HEAD:{file.path}")
+        return None if text is None or (max_bytes is not None and len(text.encode("utf-8")) > max_bytes) else text
+
+    fetch, moved = to_read(policy, files)
+    contents = read_contents(fetch, moved, read)
+    for file in [f for f in files if f.status != "deleted" and not f.binary and f not in fetch and f not in moved]:
+        if len(contents) >= MAX_LOCAL_CONTENTS:
+            break
+        text = read(file)
         if text is not None and looks_binary(text):
             file.binary = True  # a move with no edits: the diff couldn't say it was binary
         elif text is not None:

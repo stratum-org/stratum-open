@@ -17,14 +17,16 @@ Scope = Callable[[str], Set[str]]
 _TEST_DIR = re.compile(r"(?:^|/)(?:tests?|__tests__|__mocks__|spec|specs|testdata|fixtures?)/")
 _TEST_FILE = re.compile(r"(?:^|/)(?:test_[^/]*\.py|[^/]*_test\.(?:py|go)|[^/]*\.(?:test|spec)\.[^/]+|conftest\.py)$")
 _COMMENT = re.compile(r"^\s*(?:#|//|/\*|\*|--|<!--)")
-# Files that are never text: a move of one is never read for the checks.
+# Files that are never text: a move of one is never read for the checks. Not
+# `.pt`: a Zope page template is text, and PyTorch's (zip archives since 1.6)
+# fail the NUL test anyway.
 BINARY_EXTENSIONS = frozenset({
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".avif", ".tif", ".tiff", ".psd",
     ".woff", ".woff2", ".ttf", ".otf", ".eot",
     ".zip", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar", ".tar", ".jar", ".whl",
     ".pdf", ".mp3", ".mp4", ".mov", ".avi", ".webm", ".wav", ".ogg", ".flac",
     ".so", ".dll", ".dylib", ".exe", ".bin", ".o", ".a", ".class", ".pyc", ".wasm",
-    ".sqlite", ".db", ".parquet", ".npy", ".pkl", ".pt", ".onnx",
+    ".sqlite", ".db", ".parquet", ".npy", ".pkl", ".onnx",
 })
 
 

@@ -33,6 +33,7 @@ MAX_CONTEXT_FILES = 20
 MAX_PROMISE_FILES = 20  # JavaScript and TypeScript files read in full for checks.floating_promises
 MAX_SCRIPT_FILES = 20  # shell scripts, and files that may be one, read in full for checks.shellcheck
 MAX_MOVED_FILES = 20  # files moved into a check's scope, which the checks read in full
+MAX_MOVED_TRIES = 3 * MAX_MOVED_FILES  # reads of such files, the binary ones included: each is an API call
 MAX_MOVED_BYTES = 1_000_000  # the contents API's own limit for a file's text
 MAX_REVIEW_TEXT_FILES = 20  # files whose text is fetched for review.context_lines
 # The JSON size of the unread paths kept in the summary's state (about 60 paths), so they don't crowd the
@@ -446,22 +447,40 @@ def stop_early(gh: GitHub, number: int, head: str, *, bot: str, name: str, run_i
 
 
 def _contents(ctx: Context, files: list[FileDiff], head: str, *, around: bool = False) -> dict[str, str] | None:
-    """The full new text of the files where the checks need context:
-    workflows and manifests always (they're small), Python files for Bandit
-    when it's installed (and for Ruff, when `checks.ruff` is on), and
-    otherwise the Python files whose change touches async code, for the
-    missing-await check. With `checks.floating_promises` on and its parser
-    installed, the JavaScript and TypeScript files that add a line starting
-    with a call. With `checks.shellcheck` on and ShellCheck on PATH, the
-    shell scripts, and the files with no extension that may be one (their
-    first line says). Files moved to where a check does more than where they
-    were, since the diff shows none of their lines as added (at most
-    MAX_MOVED_BYTES each; a bigger one is named as unread). With `around`
-    (the profile shows code around each hunk), the biggest changes the model
-    will read too."""
-    from stratum_open.checks import bandit, moved_in, promises, ruff, shellcheck
+    """The full new text of the files where the checks need context (see
+    `to_read`), fetched from GitHub."""
+
+    def read(file: FileDiff, max_bytes: int | None) -> str | None:
+        try:
+            return ctx.gh.file_text(file.path, head, max_bytes=max_bytes)
+        except GitHubError:
+            return None
+
+    fetch, moved = to_read(ctx.policy, files, around=around)
+    return read_contents(fetch, moved, read) or None
+
+
+def to_read(policy: Policy, files: list[FileDiff], *, around: bool = False) -> tuple[list[FileDiff], list[FileDiff]]:
+    """The files whose full new text the checks need, in the order to read
+    them, and the files moved to where a check does more than where they
+    were, beyond those, to read after them (see `read_contents`).
+
+    The first list: workflows and manifests always (they're small), Python
+    files for Bandit when it's installed (and for Ruff, when `checks.ruff` is
+    on), and otherwise the Python files whose change touches async code, for
+    the missing-await check. With `checks.floating_promises` on and its
+    parser installed, the JavaScript and TypeScript files that add a line
+    starting with a call. With `checks.shellcheck` on and ShellCheck on PATH,
+    the shell scripts, and the files with no extension that may be one (their
+    first line says). With `around` (the profile shows code around each
+    hunk), the biggest changes the model will read too.
+
+    The moved files are needed because the diff shows none of their lines as
+    added. The ones the checks gain most on come first, so a PR padded with
+    moved data files can't push a moved code file out."""
+    from stratum_open.checks import bandit, gained, moved_in, promises, ruff, shellcheck
     from stratum_open.checks.awaits import touches_async
-    from stratum_open.checks.common import looks_binary
+    from stratum_open.checks.common import moved_in as moved_into
     from stratum_open.checks.dependencies import manifest_kind
 
     def wanted(file: FileDiff) -> bool:
@@ -471,30 +490,56 @@ def _contents(ctx: Context, files: list[FileDiff], head: str, *, around: bool = 
 
     live = [f for f in files if f.status != "deleted" and not f.binary]
     fetch = [f for f in live if wanted(f)][:MAX_CONTEXT_FILES]
-    # The files Bandit reads first: a PR full of edited tests mustn't push the code out.
-    python = sorted((f for f in live if f.path.endswith(".py")), key=lambda f: (not bandit.scope(f.path), -f.additions))
-    whole = bandit.available() or (ctx.policy.checks.ruff and ruff.available())
+    # The files Bandit reads first, in bandit.plan's order: what the PR edits, then what it moved here.
+    # A PR full of edited tests, or of files moved with edits, mustn't push the code out.
+    python = sorted((f for f in live if f.path.endswith(".py")),
+                    key=lambda f: (not bandit.scope(f.path), moved_into(f, bandit.scope), -f.additions))
+    whole = bandit.available() or (policy.checks.ruff and ruff.available())
     fetch += (python if whole else [f for f in python if touches_async(f)])[:MAX_BANDIT_FILES]
-    if ctx.policy.checks.floating_promises and promises.available():
+    if policy.checks.floating_promises and promises.available():
         fetch += [f for f in live if promises.worth_reading(f)][:MAX_PROMISE_FILES]
-    if ctx.policy.checks.shellcheck and shellcheck.available():
+    if policy.checks.shellcheck and shellcheck.available():
         fetch += [f for f in live if shellcheck.worth_reading(f)][:MAX_SCRIPT_FILES]
-    moved = [f for f in live if moved_in(f)]  # the size cap and the binary test apply however they're fetched
-    fetch += [f for f in moved if f not in fetch][:MAX_MOVED_FILES]
+    moved = sorted((f for f in live if moved_in(f) and f not in fetch), key=lambda f: -gained(f))
     if around:
-        reviewed = sorted((f for f in live if not ctx.policy.ignored(f.path) and f not in fetch), key=lambda f: -(f.additions + f.deletions))
+        reviewed = sorted((f for f in live if not policy.ignored(f.path) and f not in fetch and f not in moved),
+                          key=lambda f: -(f.additions + f.deletions))
         fetch += reviewed[:MAX_REVIEW_TEXT_FILES]
+    return fetch, moved
+
+
+def read_contents(fetch: list[FileDiff], moved: list[FileDiff], read: Callable[[FileDiff, int | None], str | None]) -> dict[str, str]:
+    """The text of each file in `fetch`, then of the files in `moved` until
+    MAX_MOVED_FILES of them gave text, or MAX_MOVED_TRIES were tried.
+    `read(file, max_bytes)` gives a file's text, or None. A moved file is
+    read only up to MAX_MOVED_BYTES (a bigger one is named as unread), and
+    when its text turns out to be binary, it's marked binary and left out:
+    the diff couldn't tell, since a move with no edits looks the same either
+    way. A binary file doesn't count towards MAX_MOVED_FILES, so twenty of
+    them can't take every place, but it does count as a try."""
+    from stratum_open.checks import moved_in
+    from stratum_open.checks.common import looks_binary
+
     contents: dict[str, str] = {}
-    for file in fetch:
-        try:
-            text = ctx.gh.file_text(file.path, head, max_bytes=MAX_MOVED_BYTES if file in moved else None)
-        except GitHubError:
-            text = None
-        if text is not None and file in moved and looks_binary(text):
-            file.binary = True  # a moved file the diff couldn't call text or not
+
+    def keep(file: FileDiff) -> bool:
+        is_moved = moved_in(file)  # the size cap and the binary test apply however it's fetched
+        text = read(file, MAX_MOVED_BYTES if is_moved else None)
+        if text is not None and is_moved and looks_binary(text):
+            file.binary = True
         elif text is not None:
             contents[file.path] = text
-    return contents or None
+            return True
+        return False
+
+    for file in fetch:
+        keep(file)
+    kept = 0
+    for file in moved[:MAX_MOVED_TRIES]:
+        if kept == MAX_MOVED_FILES:
+            break
+        kept += keep(file)
+    return contents
 
 
 def _history(ctx: Context, files: list[FileDiff], pull: dict) -> tuple[list[str], set[str], list[Finding], dict[str, str]]:
@@ -662,24 +707,32 @@ def _coverage(result: ReviewResult | None, incremental: bool, changed: set[str] 
     moved = [f.path for f in files if moved_in(f) and f.path in contents]
     if moved:
         lines.append("Checked in full, since they moved to where the checks do more: " + ", ".join(f"`{p}`" for p in moved[:10]))
-    if bandit.available():
-        _, left_out = bandit.plan(files, contents)
-        if left_out:
-            lines.append(f"Not read by Bandit ({_files(len(left_out))} past its limit of {bandit.MAX_FILES}, or without their text): "
-                         + ", ".join(f"`{p}`" for p in left_out[:10]))
-    if policy is not None and policy.checks.ruff and ruff.available():
-        _, left_out = ruff.plan(files, contents)
-        if left_out:
-            lines.append(f"Not read by Ruff ({_files(len(left_out))} past its limit of {ruff.MAX_FILES}, too long, or without their text): "
-                         + ", ".join(f"`{p}`" for p in left_out[:10]))
-    for on, tool, name in ((policy is not None and policy.checks.shellcheck, shellcheck, "ShellCheck"),
+    for on, tool, name in ((True, bandit, "Bandit"),
+                           (policy is not None and policy.checks.ruff, ruff, "Ruff"),
+                           (policy is not None and policy.checks.shellcheck, shellcheck, "ShellCheck"),
                            (policy is not None and policy.checks.actionlint, actionlint, "actionlint")):
         if on and tool.available():
             _, left_out = tool.plan(files, contents)
             if left_out:
-                lines.append(f"Not read by {name} ({_files(len(left_out))} past its limit of {tool.MAX_FILES}, too long, or without their text): "
-                             + ", ".join(f"`{p}`" for p in left_out[:10]))
+                lines.append(_left_out_line(name, tool, left_out, contents))
     return lines
+
+
+def _left_out_line(name: str, tool: Any, left_out: list[str], contents: dict[str, str]) -> str:
+    """The coverage line for the files a tool would read but didn't, each
+    reason with its own files: the tool's own limit, a file too long for it
+    (`MAX_FILE_CHARS`, for the tools that have one), or no text to give it."""
+    longest = getattr(tool, "MAX_FILE_CHARS", None)
+    untexted = [p for p in left_out if p not in contents]
+    too_long = [p for p in left_out if p in contents and longest is not None and len(contents[p]) > longest]
+    past = [p for p in left_out if p not in untexted and p not in too_long]
+    parts = [
+        f"{_files(len(paths))} {reason} (" + ", ".join(f"`{p}`" for p in paths[:10]) + (", …" if len(paths) > 10 else "") + ")"
+        for paths, reason in ((past, f"past its limit of {tool.MAX_FILES}"), (too_long, f"over {longest or 0:,} characters"),
+                              (untexted, "whose text Stratum didn't have"))
+        if paths
+    ]
+    return f"Not read by {name}: " + "; ".join(parts)
 
 
 def _walkthrough(large: LargeReview | None, findings: list[Finding]) -> dict[str, Any]:

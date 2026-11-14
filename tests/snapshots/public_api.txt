@@ -10,6 +10,8 @@ analyze(*, title: 'str', description: 'str', files: 'list[FileDiff]', policy: 'P
 author_identity(email_or_login: 'str') -> 'str'
 build_records(repo_dir: 'str', ref: 'str' = 'HEAD', *, window_days: 'int' = 180, followup_days: 'int' = 14, exclude: 'tuple[str, ...] | list[str]' = (), now: 'datetime | None' = None) -> 'dict[str, AuthorRecord]'
 load_policy(read_default_branch_file: 'Callable[[str], str | None]') -> 'Policy'
+looks_binary(text: 'str') -> 'bool'
+moved_in(file: 'FileDiff') -> 'bool'
 parse_diff(text: 'str') -> 'list[FileDiff]'
 parse_policy(text: 'str | None') -> 'Policy'
 placeable(findings: 'list[Finding]', files: 'list[FileDiff]') -> 'list[Finding]'

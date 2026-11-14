@@ -8,6 +8,7 @@ pinned by `tests/test_public_api.py`, and changing one is a new minor version
 
 __version__ = "0.3.0"
 
+from stratum_open.checks import looks_binary, moved_in  # noqa: E402
 from stratum_open.diff import FileDiff, parse_diff  # noqa: E402
 from stratum_open.engine import EngineResult, analyze, snippet_of  # noqa: E402
 from stratum_open.findings import Finding, placeable  # noqa: E402
@@ -30,6 +31,8 @@ __all__ = [
     "author_identity",
     "build_records",
     "load_policy",
+    "looks_binary",
+    "moved_in",
     "parse_diff",
     "parse_policy",
     "placeable",

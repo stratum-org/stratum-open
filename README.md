@@ -1,13 +1,45 @@
 # Stratum Open
 
-PR review and triage for open-source maintainers, on a model you run
-yourself.
+PR review and triage for open-source maintainers, on GitHub's free runner.
+No API key, no account, and nothing is sent to Stratum.
+
+![Two inline comments from Stratum Open's checks on a pull request: couponkit-pro isn't on PyPI, and line 6 has what looks like an API key](docs/images/review.png)
+
+<sub>Two of the checks' comments on [a demo PR](https://github.com/stratum-org/stratum-demo/pull/2/files).</sub>
 
 Maintainers now get pull requests faster than they can read them, many of
 them generated. Stratum Open reads each PR first and sorts the queue, so you
-spend your review time on the ones worth it. It runs on small open models
-(7–20B) on hardware you control, and your rules live in a file in your own
-repo. Nothing is sent to Stratum: no account, no telemetry, no license check.
+spend your review time on the ones worth it. It runs on open models of 7 to
+20B parameters on hardware you control, GitHub's own runner included, and
+your rules live in a file in your own repo. No telemetry, no license check.
+
+- **It finds bugs, and it shows its numbers.** Of 39 real PRs, each with one bug planted, the example workflow found 16 on GitHub's free runner, and 27 with [two more settings](#a-more-thorough-review) that make it slower. Every figure is on the [results page](benchmark/RESULTS.md), with its 95% interval and the comments made on the same PRs without the bug.
+- **Checks that need no model** catch secrets, risky workflow changes, and packages that don't exist: a typo, or a name an AI invented that someone could register. Together they caught 98 of 99 planted risks, with no false alarms on 184 merged Python PRs.
+- **One triage label per PR**, with its reasons, and a queue of every open PR, cheapest to review first.
+
+## Quick start: the GitHub Action
+
+Copy [examples/stratum.yml](examples/stratum.yml) to `.github/workflows/stratum.yml`. That's all.
+
+That workflow runs `gpt-oss:20b` with Ollama on GitHub's own runner, so you need no server. On the [planted-bug benchmark](benchmark/README.md) it found 16 of 39 bugs, against 1 of 39 for `qwen2.5-coder:7b` ([Models](#models) has the numbers). GitHub's free runners have no GPU, though, so a review takes a few minutes: about 3.5 minutes a PR, plus a couple more to download the model. At 13.8 GB it's bigger than a repository's 10 GB Actions cache, so it's downloaded each run; Ollama itself goes into the cache on the first scheduled (or manual) run, and PR runs read it, since GitHub doesn't let them write caches. For the fastest run, set `ollama-model: qwen2.5-coder:7b`, which stays in the cache, though it finds far less. If your project has a machine with a GPU, run Ollama (or any OpenAI-compatible server) there instead. Then point `review.endpoint` in your policy file at it, and drop `ollama-model` from the workflow.
+
+To hear from Stratum sooner, set `review.early_checks: true` in your policy file. The Action then runs the checks before it starts the model and posts what they found straight away: on the lines, in the summary comment (with a line saying the model's review is still running), and as a check run in progress. That's usually within a minute of the job starting, since the checks need no model. When the model is done, the same comment becomes the full review and the check run gets its result. The end result is the same as without the setting. A check's early comment that the full review wouldn't have posted is deleted then: when the model reported the same problem on the same lines, or when `review.max_inline_comments` gives its place to a more serious finding. One that someone has replied to stays. If the model's review never finishes (Ollama doesn't start, or the job fails, times out or is cancelled), the summary says so, and the check run is completed with what the checks found.
+
+The workflow uses `pull_request_target` so it can comment on PRs from forks. It's safe here because the workflow checks out your default branch, never the PR, and Stratum reads the PR only through GitHub's API: no code from the PR ever runs. Keep it that way: don't add a step that checks out the PR.
+
+### actionlint on the runner
+
+`checks.actionlint` needs `actionlint`, which GitHub's runners don't have. Without it the check is skipped and says nothing. To add it, put this step before Stratum's in your workflow. It installs the release the check was measured with, and stops if the download isn't that file:
+
+```yaml
+      - name: Install actionlint
+        run: |
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          curl -fsSL -o "$RUNNER_TEMP/actionlint.tar.gz" https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP/actionlint" actionlint
+          echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
+```
 
 ## What it does on each PR
 
@@ -39,30 +71,6 @@ repo. Nothing is sent to Stratum: no account, no telemetry, no license check.
 - **A check run** that fails on a critical finding and is neutral on a high one. Make it required in branch protection if you want it to block merging.
 - **A triage queue:** one issue listing every open PR, cheapest to review and best supported first.
 - **Track records:** each author's merged PRs that were later reverted or fixed, read from git history. Every contributor can see their own, with `/stratum record`. A record affects nothing unless your policy says so.
-
-## Quick start: the GitHub Action
-
-Copy [examples/stratum.yml](examples/stratum.yml) to `.github/workflows/stratum.yml`. That's all.
-
-That workflow runs `gpt-oss:20b` with Ollama on GitHub's own runner, so you need no server. On the [planted-bug benchmark](benchmark/README.md) it found 16 of 39 bugs, against 1 of 39 for `qwen2.5-coder:7b` ([Models](#models) has the numbers). GitHub's free runners have no GPU, though, so a review takes a few minutes: about 3.5 minutes a PR, plus a couple more to download the model. At 13.8 GB it's bigger than a repository's 10 GB Actions cache, so it's downloaded each run; Ollama itself goes into the cache on the first scheduled (or manual) run, and PR runs read it, since GitHub doesn't let them write caches. For the fastest run, set `ollama-model: qwen2.5-coder:7b`, which stays in the cache, though it finds far less. If your project has a machine with a GPU, run Ollama (or any OpenAI-compatible server) there instead. Then point `review.endpoint` in your policy file at it, and drop `ollama-model` from the workflow.
-
-To hear from Stratum sooner, set `review.early_checks: true` in your policy file. The Action then runs the checks before it starts the model and posts what they found straight away: on the lines, in the summary comment (with a line saying the model's review is still running), and as a check run in progress. That's usually within a minute of the job starting, since the checks need no model. When the model is done, the same comment becomes the full review and the check run gets its result. The end result is the same as without the setting. A check's early comment that the full review wouldn't have posted is deleted then: when the model reported the same problem on the same lines, or when `review.max_inline_comments` gives its place to a more serious finding. One that someone has replied to stays. If the model's review never finishes (Ollama doesn't start, or the job fails, times out or is cancelled), the summary says so, and the check run is completed with what the checks found.
-
-The workflow uses `pull_request_target` so it can comment on PRs from forks. It's safe here because the workflow checks out your default branch, never the PR, and Stratum reads the PR only through GitHub's API: no code from the PR ever runs. Keep it that way: don't add a step that checks out the PR.
-
-### actionlint on the runner
-
-`checks.actionlint` needs `actionlint`, which GitHub's runners don't have. Without it the check is skipped and says nothing. To add it, put this step before Stratum's in your workflow. It installs the release the check was measured with, and stops if the download isn't that file:
-
-```yaml
-      - name: Install actionlint
-        run: |
-          mkdir -p "$RUNNER_TEMP/actionlint"
-          curl -fsSL -o "$RUNNER_TEMP/actionlint.tar.gz" https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
-          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum -c -
-          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP/actionlint" actionlint
-          echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
-```
 
 ## Your rules: `.stratum/policy.yml`
 

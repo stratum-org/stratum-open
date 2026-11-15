@@ -89,7 +89,8 @@ def test_the_summary_footer_drops_the_command_hint():
     body = publish.render_summary(publish.Summary(findings=[], inline=set(), policy=Policy(), model_name=None), publish.State())
     assert "/stratum help" in body
     out = gitlab_body(body)
-    assert "/stratum" not in out and out.endswith(publish.State().encode())
+    assert "/stratum " not in out and out.endswith(publish.State().encode())
+    assert "[Stratum Open](https://github.com/stratum-org/stratum-open)" in out  # the link stays: it's no command
 
 
 # ── GitLab's diff list as a git diff ─────────────────────────────────────

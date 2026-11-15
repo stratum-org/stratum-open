@@ -41,4 +41,4 @@
 
 </details>
 
-<sub>Stratum Open: review and triage on a model the maintainers run. Comment `/stratum help` for commands.</sub>
+<sub>[Stratum Open](https://github.com/stratum-org/stratum-open): review and triage on a model the maintainers run. Comment `/stratum help` for commands.</sub>

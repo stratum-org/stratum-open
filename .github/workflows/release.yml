@@ -2,8 +2,9 @@
 #
 # It uses trusted publishing: PyPI checks this workflow's identity, so no
 # API token is stored anywhere. Set it up once on pypi.org, under the
-# stratum-open project's "Publishing" settings: owner AnshulPatil2005,
-# repository stratum-open, workflow release.yml, environment pypi.
+# stratum-open project's "Publishing" settings (before the first upload,
+# as a pending publisher under your account's "Publishing"): owner
+# stratum-org, repository stratum-open, workflow release.yml, environment pypi.
 name: Release
 
 on:

@@ -442,7 +442,7 @@ def render_summary(summary: Summary, state: State) -> str:
     if more_notes:
         details.append("More from the project's history:" + "".join(f"\n  - {note}" for note in more_notes))
     lines += ["<details><summary>What was reviewed</summary>", ""] + [f"- {d}" for d in details] + ["", "</details>", ""]
-    lines.append("<sub>Stratum Open: review and triage on a model the maintainers run. Comment `/stratum help` for commands.</sub>")
+    lines.append("<sub>[Stratum Open](https://github.com/stratum-org/stratum-open): review and triage on a model the maintainers run. Comment `/stratum help` for commands.</sub>")
     body = "\n".join(lines)
     encoded = state.encode()
     while len(body) + len(encoded) > COMMENT_LIMIT and state.findings:

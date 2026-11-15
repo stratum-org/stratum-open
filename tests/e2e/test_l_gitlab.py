@@ -82,7 +82,8 @@ def test_an_mr_is_reviewed_and_published_on_a_self_hosted_gitlab(gl, fake_model,
     assert note["position"] == {"position_type": "text", "base_sha": "b" * 40, "start_sha": "c" * 40, "head_sha": HEAD,
                                 "old_path": "app/users.py", "new_path": "app/users.py", "new_line": 5}
     assert "```suggestion:-0+0\n" in note["body"] and "```suggestion\n" not in note["body"]
-    assert "/stratum" not in gl.posted_text()  # GitLab CI can't read commands, so no hint names one
+    # GitLab CI can't read commands, so no hint names one ("/stratum " with the space: the footer's link to stratum-org/stratum-open isn't a command).
+    assert "/stratum " not in gl.posted_text() and "stratum-org/stratum-open" in gl.posted_text()
     assert "Resolve this thread" in note["body"]
 
     [status] = gl.posted_statuses(HEAD)

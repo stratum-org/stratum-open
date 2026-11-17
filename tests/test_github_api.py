@@ -108,3 +108,60 @@ def test_ci_is_read_as_it_stood_at_a_time(monkeypatch):
     assert ci() is True  # each context's last status by then
     found["statuses"][1]["state"] = "failure"
     assert ci() is False
+
+
+def test_check_annotations_are_sent_in_batches_of_fifty(monkeypatch):
+    gh = GitHub("t", "acme/widget")
+    requests = []
+
+    def send(method, path, *, json):
+        requests.append((method, json["output"]["annotations"]))
+        return {"id": 42}
+
+    monkeypatch.setattr(gh, "request", send)
+    annotations = [{"path": f"file_{n}.py"} for n in range(120)]
+    gh.check_run("a" * 40, "review", "success", "Review", "Summary", "Details", annotations)
+    assert [(method, len(batch)) for method, batch in requests] == [("POST", 50), ("PATCH", 50), ("PATCH", 20)]
+    assert [annotation for _, batch in requests for annotation in batch] == annotations
+
+
+def test_review_threads_reads_every_cursor(monkeypatch):
+    gh = GitHub("t", "acme/widget")
+    cursors = []
+
+    def graphql(query, **variables):
+        cursor = variables["cursor"]
+        cursors.append(cursor)
+        start, end = (0, 100) if cursor is None else (100, 150)
+        nodes = [{"id": f"T{n}", "comments": {"nodes": [{"databaseId": n, "body": "example"}]}}
+                 for n in range(start, end)]
+        return {"repository": {"pullRequest": {"reviewThreads": {
+            "nodes": nodes, "pageInfo": {"hasNextPage": end == 100, "endCursor": "next" if end == 100 else None},
+        }}}}
+
+    monkeypatch.setattr(gh, "graphql", graphql)
+    assert [thread["id"] for thread in gh.review_threads(7)] == [f"T{n}" for n in range(150)]
+    assert cursors == [None, "next"]
+
+
+def test_comment_is_not_retried_after_a_server_500(monkeypatch):
+    import pytest
+    import requests
+    from stratum_open.github.api import GitHubError
+
+    gh = GitHub("t", "acme/widget")
+    methods = []
+
+    def send(method, url, **kwargs):
+        methods.append(method)
+        response = requests.Response()
+        response.status_code = 500
+        response._content = b'{"message": "server error"}'
+        return response
+
+    monkeypatch.setattr(gh.session, "request", send)
+    monkeypatch.setattr("stratum_open.github.api.time.sleep", lambda delay: None)
+    with pytest.raises(GitHubError) as error:
+        gh.comment(7, "hello")
+    assert error.value.status == 500
+    assert methods == ["POST"]

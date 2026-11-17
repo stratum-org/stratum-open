@@ -28,7 +28,7 @@ DESCRIPTIONS = {
     "low_effort": "Stratum: little evidence the change was checked",
     "needs_human": "Stratum: touches something a maintainer must look at",
 }
-_TEST_PATH = re.compile(r"(^|/)(tests?|__tests__|spec)(/|$)|(^|/)test_[^/]+$|_test\.\w+$|\.(test|spec)\.\w+$")
+_TEST_PATH = re.compile(r"(^|/)(tests?|__tests__|spec)(/|$)|(^|/)test_[^/]+$|_test\.\w+$|\.(test|spec)\.\w+$", re.IGNORECASE)
 _DOC_PATH = re.compile(r"(\.(md|rst|txt|adoc)$)|(^|/)docs?/|(^|/)(LICENSE|CHANGELOG|AUTHORS)[^/]*$", re.IGNORECASE)
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _CHECKBOX = re.compile(r"^\s*[-*]\s*\[[ xX]\].*$", re.MULTILINE)

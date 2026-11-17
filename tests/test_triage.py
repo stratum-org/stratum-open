@@ -103,3 +103,14 @@ def test_the_queue_pings_nobody_named_in_the_reasons():
     pr = facts(number=5)
     result = triage(pr, [], POLICY, matches_description="no", mismatch="It also emails @octocat.")
     assert "emails `@octocat`." in render_queue([(pr, result)], POLICY)
+
+
+def test_capitalized_test_paths_count_as_evidence():
+    assert is_test("Tests/AppTests/LoginTests.swift")
+    assert is_test("Test/LoginTest.java")
+    result = triage(
+        facts(body="", linked_issues=[], paths=["Sources/Login.swift", "Tests/AppTests/LoginTests.swift"]),
+        [], POLICY,
+    )
+    assert result.key == "ready"
+    assert "Changes tests." in result.evidence

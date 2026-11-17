@@ -225,3 +225,13 @@ def test_the_cli_reads_the_track_record_settings_from_the_policy_at_ref(repo, mo
 
     set_policy("track_record:\n  enabled: false\n", day=92)
     assert record(BOB) == "Track records are turned off in this project's policy.\n"
+
+
+def test_record_reports_a_missing_checkout_or_ref(tmp_path):
+    import pytest
+    from stratum_open.cli import main
+
+    for repo in (tmp_path, tmp_path / "missing"):
+        with pytest.raises(SystemExit, match="Couldn't find missing-ref") as error:
+            main(["record", "dana", "--repo", str(repo), "--ref", "missing-ref"])
+        assert str(repo) in str(error.value)

@@ -25,7 +25,7 @@ from stratum_open.github.api import API, GitHubError
 from stratum_open.model import model_from_policy
 from stratum_open.policy import POLICY_PATH, Policy, parse_policy
 from stratum_open.profiles import model_settings_line
-from stratum_open.track_record import author_identity, build_records, describe_subprocess_error
+from stratum_open.track_record import author_identity, build_records, commit_sha, describe_subprocess_error
 
 _PR = re.compile(r"(?:https://github\.com/)?([\w.-]+/[\w.-]+)(?:/pull/|#)(\d+)/?$")
 MAX_LOCAL_CONTENTS = 40  # files whose full text a local review reads, once it has read what a review on GitHub would
@@ -276,6 +276,8 @@ def _record(args) -> int:
         print(f"No record is built for {args.login}: the project's policy excludes that login.")
         return 0
     try:
+        if commit_sha(args.repo, args.ref) is None:
+            sys.exit(f"Couldn't find {args.ref} in {args.repo}: is it a Git checkout, and does that ref exist?")
         records = build_records(args.repo, args.ref, window_days=settings.window_days,
                                 followup_days=settings.followup_days, exclude=settings.exclude)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:

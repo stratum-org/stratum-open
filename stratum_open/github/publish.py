@@ -405,10 +405,10 @@ def render_summary(summary: Summary, state: State) -> str:
             lines.append(f"**Findings:** {found}." + (f" {shown} on the changed lines below." if shown else ""))
         else:
             lines.append("**Findings:** none.")
-        listed = [f for f in summary.findings if f.fingerprint not in summary.inline][:MAX_LISTED]
+        listed = [f for f in summary.findings if f.fingerprint not in summary.inline]
         if listed:
             lines += ["", "Not on a changed line:"] if shown else [""]
-            lines += [_listed(f) for f in listed]
+            lines += _capped(listed)
     lines.append("")
     if summary.hidden:
         lines += [summary.hidden, ""]

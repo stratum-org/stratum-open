@@ -1358,3 +1358,15 @@ def test_a_name_the_pr_removes_and_another_file_still_imports_is_reported_when_t
     # Off by default, and nothing to read without a checkout.
     assert found(parse_policy(""), checkout=str(tmp_path))[1] == []
     assert found(on)[1] == []
+
+def test_non_quiet_summary_discloses_off_line_findings_not_shown():
+    from stratum_open.findings import Finding
+
+    policy = parse_policy("review:\n  quiet: false\n")
+    findings = [Finding(f"Finding {n}", "Details.", "low", "bug", f"file-{n}.py") for n in range(20)]
+    for n, finding in enumerate(findings):
+        finding.fingerprint = str(n)
+    summary = publish.render_summary(publish.Summary(findings, set(), policy, "test"), publish.State())
+    assert "- and 5 more." in summary
+    assert "Finding 14." in summary
+    assert "Finding 15." not in summary

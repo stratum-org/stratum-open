@@ -294,15 +294,20 @@ def _record(args) -> int:
 
 def _policy(args) -> int:
     path = Path(args.file)
-    policy = parse_policy(path.read_text(encoding="utf-8") if path.exists() else None)
-    if not path.exists():
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
         print(f"No {path}: the defaults apply.")
+        return 0
+    except OSError as exc:
+        sys.exit(f"Couldn't read {path}: {exc.strerror or str(exc)}.")
+    policy = parse_policy(text, source_path=str(path))
     for error in policy.errors:
         print(f"error: {error}")
     for warning in policy.warnings:
         print(f"warning: {warning}")
     if not policy.errors:
-        print(f"{path} is usable." if path.exists() else "")
+        print(f"{path} is usable.")
     return 1 if policy.errors else 0
 
 

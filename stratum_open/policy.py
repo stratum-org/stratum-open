@@ -223,7 +223,7 @@ _META = {"source", "warnings", "errors", "explicit"}
 _HOSTED = {"services"}  # hosted Stratum's service map: which service calls, uses, publishes to or consumes from which
 
 
-def parse_policy(text: str | None) -> Policy:
+def parse_policy(text: str | None, *, source_path: str = POLICY_PATH) -> Policy:
     """The policy for this file's text (None = no file)."""
     if text is None:
         return Policy()
@@ -231,13 +231,13 @@ def parse_policy(text: str | None) -> Policy:
         raw = yaml.safe_load(text)
         repeated = _repeated_keys(yaml.compose(text, Loader=yaml.SafeLoader))
     except yaml.YAMLError as exc:
-        return _unusable(f"{POLICY_PATH} isn't valid YAML ({_yaml_problem(exc)}).")
+        return _unusable(f"{source_path} isn't valid YAML ({_yaml_problem(exc)}).")
     if raw is None:
         return Policy(source="file")
     if not isinstance(raw, dict):
-        return _unusable(f"{POLICY_PATH} must be a mapping of keys, not a {type(raw).__name__}.")
+        return _unusable(f"{source_path} must be a mapping of keys, not a {type(raw).__name__}.")
     if raw.get("version", VERSION) != VERSION:
-        return _unusable(f"{POLICY_PATH} has version {raw.get('version')!r}; this release reads version {VERSION}.")
+        return _unusable(f"{source_path} has version {raw.get('version')!r}; this release reads version {VERSION}.")
 
     warnings: list[str] = repeated
     errors: list[str] = []

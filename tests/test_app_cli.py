@@ -462,3 +462,25 @@ def test_triage_post_with_a_personal_token_edits_its_own_queue_issue(monkeypatch
         assert cli.main(["triage", "acme/widget", "--post"]) == 0
     assert [(i["title"], i["user"]["login"]) for i in gh.issues] == [("Stratum triage queue", "github-actions[bot]")]
     capsys.readouterr()
+
+
+def test_policy_check_reports_the_input_path(tmp_path, capsys):
+    import pytest
+    from stratum_open.cli import main
+
+    read = tmp_path / "latin.yml"
+    read.write_bytes(b'# caf\xe9\nversion: 1\n')
+    assert main(["policy", "check", str(read)]) == 0
+    assert str(read) in capsys.readouterr().out
+
+    with pytest.raises(SystemExit) as error:
+        main(["policy", "check", str(tmp_path)])
+    assert str(tmp_path) in str(error.value)
+    assert "\n" not in str(error.value)
+
+    bad = tmp_path / "draft.yml"
+    bad.write_text("review: [\n")
+    assert main(["policy", "check", str(bad)]) == 1
+    message = capsys.readouterr().out
+    assert f"{bad} isn't valid YAML" in message
+    assert ".stratum/policy.yml" not in message

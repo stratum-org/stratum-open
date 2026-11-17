@@ -188,3 +188,26 @@ def test_check_findings_off_the_diff_key_on_their_own_line_of_the_file():
     again = Finding("`eval()` runs a string as code", "x", "high", "security", "app/helper.py", 4, 4, source="check", rule="code/eval")
     assign_fingerprints([again], added)
     assert again.fingerprint == first.fingerprint
+
+
+def test_a_finding_spanning_hunks_is_narrowed_to_its_first_line():
+    span = Finding("Spans two hunks", "detail", "high", "bug", "app/users.py", 6, 22)
+    anchor_to_diff([span], parse_diff(DIFF))
+    assert (span.line_start, span.line_end) == (6, 6)
+
+
+def test_deduplication_prefers_the_anchored_finding():
+    loose = Finding("Same issue", "file-level copy", "high", "bug", "app/users.py", confidence=0.9)
+    pinned = Finding("Same issue", "anchored copy", "high", "bug", "app/users.py", 6, 6, confidence=0.9)
+    loose.fingerprint = pinned.fingerprint = "same"
+    assert dedupe([loose, pinned]) == [pinned]
+
+
+def test_risk_score_is_capped_at_one_hundred():
+    assert risk_score([Finding("Title", "Detail", "critical")] * 10) == 100
+
+
+def test_finding_deserialization_reads_only_usable_numeric_lines():
+    for value, expected in [(True, None), (3.0, 3), ("7", 7), ("0", None), (-1, None)]:
+        data = {"title": "Title", "detail": "Detail", "path": "a.py", "line_start": value}
+        assert Finding.from_dict(data).line_start == expected

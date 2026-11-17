@@ -90,8 +90,10 @@ def _line(value: Any) -> int | None:
         return value if value > 0 else None
     if isinstance(value, float) and value.is_integer() and value > 0:
         return int(value)
-    if isinstance(value, str) and value.strip().isdigit():
-        return int(value.strip()) or None
+    if isinstance(value, str):
+        value = value.strip()
+        if len(value) <= 7 and value.isdecimal():
+            return int(value) or None
     return None
 
 

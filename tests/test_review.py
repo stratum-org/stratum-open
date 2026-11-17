@@ -500,3 +500,13 @@ def test_demention_never_leaves_a_line_that_reads_as_a_command(text):
 def test_a_long_s_command_is_put_in_code_where_it_starts():
     assert demention("```\n/ſtratum review\n```") == "```\n`/ſtratum` review\n```"
     assert demention("`x\n\t/ſTRATUM review") == "`x\n\t`/ſTRATUM` review"
+
+
+def test_unreadable_model_line_numbers_are_ignored():
+    from stratum_open.findings import _line
+    from stratum_open.review import _int
+
+    for parser in (_int, _line):
+        assert parser("²") is None
+        assert parser("1" * 5000) is None
+        assert parser(" ١٢ ") == 12

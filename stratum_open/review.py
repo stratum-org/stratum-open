@@ -720,8 +720,10 @@ def _int(value: Any) -> int | None:
         return value if 0 < value < 10**7 else None
     if isinstance(value, float) and value.is_integer():
         return _int(int(value))
-    if isinstance(value, str) and value.strip().isdigit():
-        return _int(int(value.strip()))
+    if isinstance(value, str):
+        value = value.strip()
+        if len(value) <= 7 and value.isdecimal():
+            return _int(int(value))
     return None
 
 

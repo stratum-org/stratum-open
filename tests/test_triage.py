@@ -71,11 +71,16 @@ def test_track_record_counts_only_when_the_policy_says_so():
     when = datetime(2026, 10, 1, tzinfo=timezone.utc)
     prs = [MergedPR(n, f"{n:040x}", "dana", when, f"PR {n}") for n in range(1, 5)]
     record = AuthorRecord("dana", prs, [Strike(prs[0], "revert", "c1", "Revert"), Strike(prs[1], "follow-up", "c2", "Fix #2")])
-    bare = facts(body="", paths=["README.md"])
-    assert triage(bare, [], POLICY, record=record).key == "ready"
-    on = parse_policy("track_record:\n  affects_triage: true\n")
+    bare = facts(body="", linked_issues=[], paths=["README.md"])
+    off = parse_policy("triage:\n  label_low_effort: true\n")
+    on = parse_policy("triage:\n  label_low_effort: true\ntrack_record:\n  affects_triage: true\n")
+    assert triage(bare, [], off, record=record).key == "ready"
     result = triage(bare, [], on, record=record)
-    assert "2 of the author's last 4 merged PRs were later reverted or fixed." in triage(facts(body="", linked_issues=[], paths=["README.md"]), [], on, record=record).reasons or result.key == "ready"
+    assert result.key == "low_effort"
+    assert "2 of the author's last 4 merged PRs were later reverted or fixed." in result.reasons
+
+    clean = AuthorRecord("dana", prs[:3], [])
+    assert "None of the author's last 3 merged PRs needed a revert or fix." in triage(bare, [], on, record=clean).evidence
 
 
 def test_path_and_description_helpers():

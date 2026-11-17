@@ -259,3 +259,9 @@ def test_score_based_conclusions():
     assert conclusion(high, True, scored, score=55) == "neutral"
     assert conclusion([], True, scored, score=10) == "success"
     assert conclusion([], False, scored, score=10) == "neutral"
+
+
+def test_a_quoted_version_explains_the_expected_yaml_type():
+    quoted = parse_policy('version: "1"')
+    assert quoted.errors and "remove the quotes" in quoted.errors[0]
+    assert "this release reads version 1" in parse_policy("version: 2").errors[0]

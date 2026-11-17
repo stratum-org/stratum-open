@@ -236,6 +236,8 @@ def parse_policy(text: str | None) -> Policy:
         return Policy(source="file")
     if not isinstance(raw, dict):
         return _unusable(f"{POLICY_PATH} must be a mapping of keys, not a {type(raw).__name__}.")
+    if raw.get("version") == str(VERSION):
+        return _unusable(f"{POLICY_PATH} requires an integer version; remove the quotes around {VERSION}.")
     if raw.get("version", VERSION) != VERSION:
         return _unusable(f"{POLICY_PATH} has version {raw.get('version')!r}; this release reads version {VERSION}.")
 

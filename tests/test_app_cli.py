@@ -462,3 +462,19 @@ def test_triage_post_with_a_personal_token_edits_its_own_queue_issue(monkeypatch
         assert cli.main(["triage", "acme/widget", "--post"]) == 0
     assert [(i["title"], i["user"]["login"]) for i in gh.issues] == [("Stratum triage queue", "github-actions[bot]")]
     capsys.readouterr()
+
+
+def test_help_lists_policy_database_and_server_defaults(capsys):
+    import pytest
+    from stratum_open.cli import main
+
+    for command, values in (
+        ("policy", (".stratum/policy.yml",)),
+        ("data", ("STRATUM_DB", "stratum.db", "180")),
+        ("serve", ("0.0.0.0", "PORT", "8080")),
+    ):
+        with pytest.raises(SystemExit) as result:
+            main([command, "--help"])
+        assert result.value.code == 0
+        text = capsys.readouterr().out
+        assert all(value in text for value in values)

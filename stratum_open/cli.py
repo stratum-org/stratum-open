@@ -52,7 +52,7 @@ def main(argv: list[str] | None = None) -> int:
 
     policy = sub.add_parser("policy", help="check a policy file")
     policy.add_argument("action", choices=["check"])
-    policy.add_argument("file", nargs="?", default=POLICY_PATH)
+    policy.add_argument("file", nargs="?", default=POLICY_PATH, help=f"YAML policy file (default: {POLICY_PATH})")
 
     replay = sub.add_parser("replay", help="what the checks and triage would have said on a repo's closed PRs; posts nothing")
     replay.add_argument("repo", help="owner/name")
@@ -67,16 +67,16 @@ def main(argv: list[str] | None = None) -> int:
 
     data = sub.add_parser("data", help="see or delete what the GitHub App stored")
     data.add_argument("action", choices=["delete", "purge", "export"])
-    data.add_argument("--db", default=os.environ.get("STRATUM_DB", "stratum.db"))
+    data.add_argument("--db", default=os.environ.get("STRATUM_DB", "stratum.db"), help="App SQLite database (default: STRATUM_DB or stratum.db)")
     data.add_argument("--repo", help="owner/name")
     data.add_argument("--pr", type=int, help="with delete: one PR's findings and job log")
     data.add_argument("--feedback", action="store_true", help="with delete: thumbs-up/down votes and muted rules")
     data.add_argument("--all", action="store_true", help="with delete --repo: everything stored for the repo")
-    data.add_argument("--days", type=_days, default=180, help="with purge: findings older than this go (jobs: 14 days)")
+    data.add_argument("--days", type=_days, default=180, help="with purge: remove findings older than this many days (default: 180; jobs: 14 days)")
 
     serve = sub.add_parser("serve", help="run the GitHub App's webhook server")
-    serve.add_argument("--host", default="0.0.0.0")
-    serve.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")))
+    serve.add_argument("--host", default="0.0.0.0", help="webhook bind address (default: 0.0.0.0)")
+    serve.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")), help="webhook port (default: PORT or 8080)")
 
     action = sub.add_parser("action", help="the GitHub Action's entry point")
     step = action.add_mutually_exclusive_group()

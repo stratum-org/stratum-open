@@ -103,3 +103,21 @@ def test_the_queue_pings_nobody_named_in_the_reasons():
     pr = facts(number=5)
     result = triage(pr, [], POLICY, matches_description="no", mismatch="It also emails @octocat.")
     assert "emails `@octocat`." in render_queue([(pr, result)], POLICY)
+
+
+def test_drafts_do_not_use_up_triage_queue_slots():
+    from types import SimpleNamespace
+    from stratum_open.triage_queue import update_queue
+
+    pulls = [{"number": n, "title": f"PR {n}", "draft": n <= 30} for n in range(1, 121)]
+    visited = []
+
+    def comments(number):
+        visited.append(number)
+        return []
+
+    github = SimpleNamespace(open_pulls=lambda: pulls, issue_comments=comments)
+    result = update_queue(SimpleNamespace(gh=github, bot="stratum", policy=POLICY), post=False)
+
+    assert visited == list(range(31, 121))
+    assert "Not reviewed yet (90)" in result

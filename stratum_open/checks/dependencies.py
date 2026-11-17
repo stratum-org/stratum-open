@@ -433,9 +433,14 @@ def _scan_pyproject(lines: list[tuple[int, str]]) -> list[Entry]:
     return entries
 
 
+_TOML_STRING_OR_COMMENT = re.compile(_STRING.pattern + r"|(?P<comment>#)")
+
+
 def _strings_as_requirements(number: int, text: str, strict: bool) -> list[Entry]:
     found = []
-    for match in _STRING.finditer(text):
+    for match in _TOML_STRING_OR_COMMENT.finditer(text):
+        if match.group("comment"):
+            break
         if text[: match.start()].rstrip().endswith("="):
             continue  # a value in an inline table, like {include-group = "test"}
         requirement = _requirement(_quoted(match), strict=strict)

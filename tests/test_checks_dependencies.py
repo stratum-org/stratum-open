@@ -827,3 +827,14 @@ def test_records_that_cant_be_read_in_full_give_no_answer(reply):
 def test_a_session_that_can_only_get_gives_no_advisories():
     session = FakeSession({})  # built for the registries: it has no `post`
     assert PackageLookup(session).advisories([("pypi", "requests", "2.19.1")]) == {}
+
+
+def test_commented_pyproject_requirements_are_not_dependencies():
+    lines = [
+        "[project]",
+        "dependencies = [",
+        '  # "not-a-package>=1",',
+        '  "real-package @ https://example.invalid/release#sha256=abc", # "other-package>=1"',
+        "]",
+    ]
+    assert new_names(diff("pyproject.toml", lines)) == [("pypi", "real-package", 4, False)]

@@ -117,8 +117,14 @@ def handle(ctx: Context, event: str, payload: dict) -> str | None:
             reply(f"`{arg}` is {'muted' if name == 'mute' else 'unmuted'} for every PR in this repo, from the next review on.")
         return name
     if name == "explain":
-        fp = None
-        if not inline:
+        root = None
+        if inline:
+            root = ctx.gh.review_comment(thread_root) or {}
+            fp = _fingerprint(root, ctx.bot)
+            if fp is None:
+                reply("That isn't one of Stratum's comments.")
+                return "explain"
+        else:
             if not FINGERPRINT.fullmatch(arg.lower()):
                 reply("Reply `/stratum explain` to one of Stratum's inline comments, and it explains that finding. "
                       "Or name the finding: `/stratum explain <fingerprint>`.")
@@ -127,11 +133,14 @@ def handle(ctx: Context, event: str, payload: dict) -> str | None:
             if _finding(ctx, number, fp) is None:
                 reply(_no_such_finding(fp))
                 return "explain"
+        if ctx.model is None:
+            reply("This project hasn't configured a model, so Stratum can't explain findings in more detail.")
+            return "explain"
         refusal = _explain_limit(ctx, number, author)
         if refusal:
             reply(refusal)
             return "refused"
-        reply(f"{_explain(ctx, number, thread_root=thread_root if inline else None, fp=fp)}\n<!-- stratum:explained {author.lower()} -->")
+        reply(f"{_explain(ctx, number, root=root, fp=fp)}\n<!-- stratum:explained {author.lower()} -->")
         return "explain"
     if name == "ask":
         return _ask(ctx, number, author, f"{arg}\n{rest}".strip(), thread_root if inline else None, reply)
@@ -295,22 +304,16 @@ def _no_such_finding(fp: str) -> str:
             "to hide every finding of a rule, use `/stratum ignore <rule>`.")
 
 
-def _explain(ctx: Context, number: int, *, thread_root: int | None = None, fp: str | None = None) -> str:
-    """An explanation of one finding: the one whose thread `thread_root`
-    starts, or the one with the fingerprint `fp`."""
+def _explain(ctx: Context, number: int, *, root: dict | None, fp: str) -> str:
+    """Explain a verified finding using its inline comment or fingerprint."""
     gh = ctx.gh
-    if thread_root is not None:
-        root = gh.review_comment(thread_root) or {}
-        fp = _fingerprint(root, ctx.bot)
+    if root is not None:
         existing = publish.find_summary(gh.issue_comments(number), ctx.bot)
         state = publish.State.decode(existing["body"]) if existing else publish.State()
         finding = next((f for f in state.findings if f.get("fingerprint") == fp), None)
     else:
-        finding, root = _finding(ctx, number, fp or "") or (None, {})
-    if fp is None:
-        return "That isn't one of Stratum's comments."
-    if ctx.model is None:
-        return "This project hasn't configured a model, so Stratum can't explain findings in more detail."
+        finding, root = _finding(ctx, number, fp) or (None, {})
+    assert ctx.model is not None
     if finding is None:
         body = root.get("body", "")
         finding = {"title": body.split("\n", 1)[0], "detail": body, "path": root.get("path", ""), "line_start": root.get("line")}

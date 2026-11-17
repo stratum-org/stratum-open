@@ -1358,3 +1358,17 @@ def test_a_name_the_pr_removes_and_another_file_still_imports_is_reported_when_t
     # Off by default, and nothing to read without a checkout.
     assert found(parse_policy(""), checkout=str(tmp_path))[1] == []
     assert found(on)[1] == []
+
+
+def test_unrecognized_inline_explain_requests_do_not_take_quota(gh):
+    model = FakeModel(model_answer(), "This is an explanation.")
+    ctx = context(gh, model)
+    review_pull(ctx, 7)
+    valid = next(item["id"] for item in gh.review_comments_ if "Unknown id" in item["body"])
+    for _ in range(5):
+        command = comment_event("/stratum explain", login="carol", inline_reply_to=9999)
+        assert handle(ctx, *command) == "explain"
+        assert "stratum:explained" not in gh.replies[-1][2]
+    command = comment_event("/stratum explain", login="carol", inline_reply_to=valid)
+    assert handle(ctx, *command) == "explain"
+    assert "stratum:explained carol" in gh.replies[-1][2]

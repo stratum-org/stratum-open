@@ -176,7 +176,9 @@ def test_learning_from_history_is_off_on_gitlab_and_says_so(gl, fake_model):
 def test_a_draft_is_skipped_per_the_policy(gl, fake_model, capsys):
     gl.add_mr(7, diff=DIFF, draft=True)
     assert ci.main(env_for(gl, fake_model)) == 0
-    assert "Draft" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "Draft merge request" in output
+    assert "/stratum" not in output
     assert gl.summary_notes(7) == [] and gl.posted == []
 
 

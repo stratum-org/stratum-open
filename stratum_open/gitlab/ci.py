@@ -94,7 +94,11 @@ def _run(env: Mapping[str, str], gl: GitLab, iid: int, *, post: bool) -> int:
         lookup=PackageLookup(), own_checks=tuple(name for name in (env.get("CI_JOB_NAME"), env.get("STRATUM_JOB_NAME")) if name),
     )
     # GitLab CI doesn't say what happened to the MR, only that a pipeline runs for it, so review.events doesn't apply.
-    reason = skip_reason(gl.pull(iid), None, policy)
+    merge_request = gl.pull(iid)
+    if merge_request.get("draft") and policy.review.skip_drafts:
+        print("Draft merge request: run the pipeline again once it is ready for review.")
+        return 0
+    reason = skip_reason(merge_request, None, policy)
     if reason:
         print(reason)
         return 0

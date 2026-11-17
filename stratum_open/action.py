@@ -257,6 +257,8 @@ def needs_model(env: Mapping[str, str] = os.environ) -> bool:
         return True
     with open(env["GITHUB_EVENT_PATH"], encoding="utf-8") as handle_file:
         payload = json.load(handle_file)
+    if env.get("GITHUB_EVENT_NAME") == "issue_comment" and not (payload.get("issue") or {}).get("pull_request"):
+        return False
     parsed = parse((payload.get("comment") or {}).get("body", ""))
     return parsed is not None and parsed[0] in NEEDS_MODEL
 

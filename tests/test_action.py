@@ -180,7 +180,7 @@ def test_schedule_builds_the_queue(tmp_path, monkeypatch):
 )
 def test_needs_model_asks_the_command_parser(tmp_path, event_name, body, expected):
     event = tmp_path / "event.json"
-    event.write_text(json.dumps({"comment": {"body": body}} if body is not None else {}))
+    event.write_text(json.dumps({"issue": {"number": 7, "pull_request": {"url": "example"}}, "comment": {"body": body}} if body is not None else {}))
     assert action.needs_model({"GITHUB_EVENT_NAME": event_name, "GITHUB_EVENT_PATH": str(event)}) is expected
 
 
@@ -241,3 +241,14 @@ def test_the_runners_cpu_gets_small_calls_unless_the_policy_says_otherwise():
     assert context_from_env(pinned, {"STRATUM_CONTEXT_TOKENS": "8192"}).review.context_tokens == 12000
     # Explicit now, so the profile doesn't raise it again.
     assert "review.context_tokens" in context_from_env(parse_policy(None), {"STRATUM_CONTEXT_TOKENS": "8192"}).explicit
+
+
+def test_a_plain_issue_comment_does_not_start_a_review_model(tmp_path):
+    import json
+
+    event = tmp_path / "plain-issue.json"
+    event.write_text(json.dumps({"issue": {"number": 7}, "comment": {"body": "/stratum review"}}))
+    assert not action.needs_model({
+        "GITHUB_EVENT_NAME": "issue_comment",
+        "GITHUB_EVENT_PATH": str(event),
+    })

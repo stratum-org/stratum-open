@@ -159,3 +159,28 @@ def test_reach_note_names_files_with_three_or_more_importers():
         "`api/auth.py` is imported by 23 files (e.g. `api/admin.py`, `api/routes.py`, `cli/main.py`).",
         "`db/models.py` is imported by 3 files (e.g. `a.py`, `b.py`, `c.py`).",
     ]
+
+
+def test_method_require_is_not_a_javascript_import():
+    from stratum_open.repo.graph import parse_imports
+
+    text = "loader.require('./private');\nconst path = require('./public');"
+    assert [item.module for item in parse_imports("entry.js", text)] == ["./public"]
+
+
+def test_importers_ignore_escaping_relative_names_and_self_imports(tmp_path):
+    from stratum_open.repo.graph import importers
+
+    sources = {
+        "models.py": "value = 1\n",
+        "app/views.py": "from .... import models\n",
+        "pkg/mod.py": "from . import mod\n",
+        "pkg/use.py": "from . import mod\n",
+    }
+    for name, content in sources.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+    result = importers(str(tmp_path), ["models.py", "pkg/mod.py"])
+    assert result["models.py"].count == 0
+    assert result["pkg/mod.py"].examples == ["pkg/use.py"]

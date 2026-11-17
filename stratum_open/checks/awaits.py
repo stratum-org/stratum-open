@@ -143,7 +143,10 @@ def _in_async(func: ast.AsyncFunctionDef, added: set[int], awaited: set[str]) ->
         name = _name(call.func)
         if name not in awaited or call.lineno not in added:
             continue
-        parent = parents.get(call)
+        node = call
+        parent = parents.get(node)
+        while isinstance(parent, ast.BoolOp) or (isinstance(parent, ast.IfExp) and node is not parent.test):
+            node, parent = parent, parents.get(parent)
         if isinstance(parent, (ast.Await, ast.Call, ast.keyword, ast.Yield, ast.YieldFrom, ast.Starred)):
             continue  # awaited, or handed to something that takes a coroutine (create_task, gather)
         if isinstance(parent, ast.withitem) and isinstance(parents.get(parent), ast.AsyncWith):

@@ -309,3 +309,18 @@ async def load(path):
     f = anyio.wrap_file(f)
     return await f.read()
 """) == []
+
+
+def test_awaited_expression_results_do_not_flag_the_calls():
+    assert flagged("""
+async def get(fresh):
+    await load()
+    await (load() if fresh else load())
+    await (load() or load())
+""") == []
+    assert [line for line, _ in flagged("""
+async def get(fresh, x, y):
+    await load()
+    await (x if load() else y)
+    return load() if fresh else None
+""")] == [3, 4]

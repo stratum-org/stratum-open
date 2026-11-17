@@ -371,7 +371,9 @@ def test_ignore_a_rule_and_help_and_bots(gh):
     gh.permissions["mona"] = "admin"
     event, payload = comment_event("/stratum ignore model:dead-code", login="mona")
     handle(ctx, event, payload)
-    assert publish.State.decode(gh.issue_comments_[7][0]["body"]).ignored_rules == ["model:dead-code"]
+    body = gh.issue_comments_[7][0]["body"]
+    assert publish.State.decode(body).ignored_rules == ["model:dead-code"]
+    assert "Ignored on this PR: rule `model:dead-code`." in body
     dead = next(t for t in gh.threads if "Dead code" in t["comments"][0]["body"])
     assert dead["resolved"] and "Ignored on this PR." in dead["comments"][0]["body"]
 
@@ -1048,7 +1050,7 @@ def test_a_cut_off_reply_never_passes_the_check(gh):
     outcome = review_pull(context(gh, FakeModel(cut)), 7)
     assert outcome.review.salvaged_calls == 1
     assert gh.checks[-1]["conclusion"] != "success"
-    assert "were cut off; anything it found after the cut is missing" in gh.issue_comments_[7][0]["body"]
+    assert "was cut off; anything it found after the cut is missing" in gh.issue_comments_[7][0]["body"]
 
 
 def test_only_findings_that_will_be_kept_are_named_to_the_model(gh):

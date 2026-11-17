@@ -19,6 +19,8 @@ import re
 from dataclasses import dataclass
 from typing import Iterable
 
+from stratum_open.util import count
+
 LOCATIONS = (".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS")
 MAX_BYTES = 3 * 1024 * 1024  # GitHub ignores a larger CODEOWNERS
 MAX_GROUPS = 3  # owner groups named in the note
@@ -81,7 +83,7 @@ def owners_note(rules: list[Rule], paths: Iterable[str]) -> list[str]:
         more = f" and {len(paths_) - 1} more" if len(paths_) > 1 else ""
         parts.append(f"{names} for `{paths_[0]}`{more}")
     if len(owned) > MAX_GROUPS:
-        parts.append(f"{len(owned) - MAX_GROUPS} more owner groups")
+        parts.append(count(len(owned) - MAX_GROUPS, "more owner group"))
     unowned = groups.get((), [])
     tail = f" No owner is listed for {len(unowned)} of the changed files." if unowned else ""
     return ["CODEOWNERS: " + "; ".join(parts) + "." + tail]

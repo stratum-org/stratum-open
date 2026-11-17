@@ -196,7 +196,7 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
             if result.failed_calls:
                 problems.append(f"{result.failed_calls} of {len(result.calls)} model calls failed; some files weren't reviewed.")
             if result.salvaged_calls:
-                problems.append(f"{result.salvaged_calls} of the model's replies were cut off; anything it found after the cut is missing.")
+                problems.append(f"{result.salvaged_calls} of the model's replies {'was' if result.salvaged_calls == 1 else 'were'} cut off; anything it found after the cut is missing.")
     elif ctx.model is None:
         problems.append("No model is configured, so this review has only the checks.")
     large = engine.large
@@ -216,7 +216,7 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
                                else "the next review reads again the ones the chunked review didn't read in full either." if again
                                else "the chunked review didn't read those files in full either."))
         if large.salvaged_calls:
-            problems.append(f"{large.salvaged_calls} of the per-file replies were cut off; anything found after the cut is missing.")
+            problems.append(f"{large.salvaged_calls} of the per-file replies {'was' if large.salvaged_calls == 1 else 'were'} cut off; anything found after the cut is missing.")
 
     # What the model read this time, and what's left for the next review: the
     # files whose call failed or was cut off, and those it was to read again

@@ -111,3 +111,9 @@ def test_the_runner_passes_owners_and_per_file_notes_and_keeps_a_renamed_hotspot
     assert "- Imported by 1 file: `app/routes.py`. It imports `app/util.py`." in file_prompt  # under its new name
     assert "review them strictly: app/session.py" in chunk_prompt  # still a hotspot after the rename
     assert "CODEOWNERS: `@acme/app` for `app/session.py`." in gh.issue_comments_[7][0]["body"]
+
+def test_owner_groups_after_the_display_limit_use_correct_number():
+    for number, suffix in [(4, "1 more owner group."), (5, "2 more owner groups.")]:
+        paths = [f"file{i}.py" for i in range(number)]
+        rules = codeowners.parse("\n".join(f"{path} @owner{i}" for i, path in enumerate(paths)))
+        assert codeowners.owners_note(rules, paths)[0].endswith(suffix)

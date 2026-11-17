@@ -21,6 +21,7 @@ from stratum_open.github.api import GitHub, GitHubError
 from stratum_open.policy import Policy
 from stratum_open.review import COMMAND, MIN_REPEATED_FILES
 from stratum_open.triage import COLORS, DESCRIPTIONS, KEYS, Triage, label_for
+from stratum_open.util import count
 
 CHECK_NAME = "Stratum"
 SUMMARY_MARKER = "<!-- stratum:summary -->"
@@ -434,8 +435,14 @@ def render_summary(summary: Summary, state: State) -> str:
     details += [f"Policy problem: {e}" for e in policy.errors] + [f"Policy warning: {w}" for w in policy.warnings]
     if summary.muted:
         details.append("Muted by maintainers' 👎: " + ", ".join(f"`{r}`" for r in summary.muted))
-    if state.ignored or state.ignored_rules:
-        details.append(f"Ignored on this PR: {len(state.ignored)} finding(s)" + (", rules " + ", ".join(f"`{r}`" for r in state.ignored_rules) if state.ignored_rules else "") + ".")
+    ignored = []
+    if state.ignored:
+        ignored.append(count(len(state.ignored), "finding"))
+    if state.ignored_rules:
+        label = "rule " if len(state.ignored_rules) == 1 else "rules "
+        ignored.append(label + ", ".join(f"`{rule}`" for rule in state.ignored_rules))
+    if ignored:
+        details.append("Ignored on this PR: " + ", ".join(ignored) + ".")
     if quiet:  # what was left out is never listed, so the reader is at least told that something may have been
         details.append(f"Quiet review: comments from the model that name no defect are left out, and one it repeats on {MIN_REPEATED_FILES} "
                        "or more files is kept once.")

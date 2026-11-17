@@ -188,3 +188,16 @@ def test_check_findings_off_the_diff_key_on_their_own_line_of_the_file():
     again = Finding("`eval()` runs a string as code", "x", "high", "security", "app/helper.py", 4, 4, source="check", rule="code/eval")
     assign_fingerprints([again], added)
     assert again.fingerprint == first.fingerprint
+
+
+def test_git_quoted_paths_are_decoded():
+    cases = [
+        ('diff --git "a/caf\\303\\251.py" "b/caf\\303\\251.py"\n'
+         '--- "a/caf\\303\\251.py"\n+++ "b/caf\\303\\251.py"\n@@ -1 +1 @@\n-old\n+new\n', 'café.py'),
+        ('diff --git "a/caf\\303\\251.bin" "b/caf\\303\\251.bin"\n'
+         'Binary files "a/caf\\303\\251.bin" and "b/caf\\303\\251.bin" differ\n', 'café.bin'),
+        ('diff --git "a/x\\q.py" "b/x\\q.py"\nnew file mode 100644\n'
+         '--- /dev/null\n+++ "b/x\\q.py"\n@@ -0,0 +1 @@\n+x = 1\n', r'x\q.py'),
+    ]
+    for diff, expected in cases:
+        assert [change.path for change in parse_diff(diff)] == [expected]

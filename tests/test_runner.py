@@ -1083,6 +1083,7 @@ def test_the_left_out_notice_stays_inside_its_budget():
         ("review:\n  skip_bots: true\n", {"user": {"login": "dependabot[bot]", "type": "Bot"}}, "opened", "A PR by a bot"),
         ("review:\n  skip_authors: [Renovate]\n", {"user": {"login": "renovate"}}, "opened", "PRs by renovate"),
         ("review:\n  skip_labels: [wip]\n", {"labels": [{"name": "wip"}]}, "opened", "the label 'wip'"),
+        ("review:\n  skip_labels: [wip]\n", {"labels": [{"name": "WIP"}]}, "opened", "the label 'WIP'"),
         ("review:\n  skip_branches: ['release/**']\n", {"head": {"ref": "release/1.2"}}, "opened", "PRs from release/1.2"),
     ],
 )

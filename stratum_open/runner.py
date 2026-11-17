@@ -98,7 +98,9 @@ def skip_reason(pull: dict, action: str | None, policy: Policy) -> str | None:
         return f"A PR by a bot ({login}), and review.skip_bots is on."
     if login.lower() in {name.lower() for name in rules.skip_authors}:
         return f"PRs by {login} aren't reviewed (review.skip_authors)."
-    labels = sorted({label.get("name", "") for label in pull.get("labels", [])} & set(rules.skip_labels))
+    skip_labels = {label.casefold() for label in rules.skip_labels}
+    labels = sorted(name for label in pull.get("labels", [])
+                    if (name := label.get("name", "")).casefold() in skip_labels)
     if labels:
         return f"The PR has the label {labels[0]!r} (review.skip_labels)."
     branch = (pull.get("head") or {}).get("ref", "")

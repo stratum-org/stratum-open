@@ -1358,3 +1358,27 @@ def test_a_name_the_pr_removes_and_another_file_still_imports_is_reported_when_t
     # Off by default, and nothing to read without a checkout.
     assert found(parse_policy(""), checkout=str(tmp_path))[1] == []
     assert found(on)[1] == []
+
+
+def test_open_thread_counts_against_inline_comment_limit(gh):
+    policy = parse_policy("review:\n  max_inline_comments: 1\n  checks: false\n")
+    items = json.loads(model_answer())["findings"]
+    review_pull(context(gh, FakeModel(model_answer(items[:1])), policy), 7)
+    gh.move_head(7, "b" * 40, DIFF)
+    gh.compare[("a" * 40, "b" * 40)] = ["app/users.py"]
+    review_pull(context(gh, FakeModel(model_answer(items)), policy), 7)
+    assert sum(len(review["comments"]) for review in gh.reviews) == 1
+
+
+def test_a_finding_returns_after_its_fix_is_reverted(gh):
+    items = json.loads(model_answer())["findings"][:1]
+    review_pull(context(gh, FakeModel(model_answer(items))), 7)
+    gh.move_head(7, "b" * 40, FIXED)
+    gh.compare[("a" * 40, "b" * 40)] = ["app/users.py"]
+    review_pull(context(gh, FakeModel(model_answer([]))), 7)
+    assert not any(not thread["resolved"] and "Unknown id" in thread["comments"][0]["body"] for thread in gh.threads)
+
+    gh.move_head(7, "c" * 40, DIFF)
+    gh.compare[("b" * 40, "c" * 40)] = ["app/users.py"]
+    review_pull(context(gh, FakeModel(model_answer(items))), 7)
+    assert sum(not thread["resolved"] and "Unknown id" in thread["comments"][0]["body"] for thread in gh.threads) == 1

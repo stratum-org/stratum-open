@@ -122,8 +122,9 @@ time.
 
 - **GitHub API calls:** reading the PR, its diff and the repo history; posting
   comments, labels and the check run.
-- **The model endpoint in the policy file.** With `model: local`, the default,
-  that's a server the maintainers run, so code stays with them.
+- **The configured model endpoint.** Code is sent to the endpoint selected by
+  `review.endpoint` or `STRATUM_MODEL_ENDPOINT` (the Action's `model-endpoint`
+  input). Whether it leaves your infrastructure depends on who runs that endpoint.
 - **Package registries** (PyPI, npm, crates.io): only the names of
   dependencies a PR adds, to check how new they are.
   `dependencies.registry_lookup: false` turns this off.

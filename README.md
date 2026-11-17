@@ -168,7 +168,10 @@ The target is a 7–20B open model. Defaults:
 - `gpt-oss:20b` in the example workflow, on GitHub's runner;
 - `qwen2.5-coder:7b` through Ollama when neither the workflow nor `review.model_name` names a model, since `gpt-oss:20b` needs 16 GB of RAM;
 - any OpenAI-compatible server works;
-- a hosted model works too, if your project prefers one (`review.model: hosted`, with the key in `STRATUM_MODEL_API_KEY`).
+- for a hosted model, set `review.endpoint` to its OpenAI-compatible URL and
+  `review.model_name` to the provider's model ID. Set the key using
+  `STRATUM_MODEL_API_KEY`. In the Action, use the `model-endpoint` and
+  `model-api-key` inputs and leave `ollama-model` unset.
 
 On GitHub's free runner (4 CPUs, 16 GB RAM, no GPU) you can choose between two models. The numbers are from the [planted-bug benchmark](benchmark/README.md): 39 real PRs, each with one bug planted. Every number, with its sample size and 95% interval, is on the [results page](benchmark/RESULTS.md).
 

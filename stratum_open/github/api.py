@@ -14,6 +14,7 @@ from typing import Any, Iterator
 
 import requests
 
+from stratum_open.platform import CI
 from stratum_open.util import retry_after
 
 API = "https://api.github.com"
@@ -86,7 +87,7 @@ class GitHub:
             if isinstance(data, list):
                 yield from data
             elif isinstance(data, dict):
-                yield from data.get("check_runs", data.get("items", data.get("repositories", []))) or []
+                yield from data.get("check_runs", data.get("workflow_runs", data.get("items", data.get("repositories", [])))) or []
             match = _NEXT.search(response.headers.get("Link", ""))
             url, params = (match.group(1), None) if match else (None, None)
 
@@ -188,19 +189,24 @@ class GitHub:
         nodes = (((data.get("repository") or {}).get("pullRequest") or {}).get("closingIssuesReferences") or {}).get("nodes") or []
         return [node["number"] for node in nodes]
 
-    def ci_state(self, sha: str, *, ignore: set[str]) -> bool | None:
-        """True when every check and status on the commit passed, False when
-        one failed, None while they're pending or when there are none.
-        Stratum's own checks (`ignore`) don't count."""
+    def ci_state(self, sha: str, *, ignore: set[str]) -> CI:
+        """What the commit's checks, statuses and `pull_request` workflow
+        runs say: failed when one failed, held when a workflow waits for a
+        maintainer's approval, pending while one runs, none when there are
+        none, else passed. Stratum's own checks and workflow (`ignore`, by
+        name) don't count."""
         runs = [r for r in self.paginate(f"{self._r}/commits/{sha}/check-runs") if r.get("name") not in ignore]
         status = self.get(f"{self._r}/commits/{sha}/status")
-        return _ci_verdict(runs, [s.get("state") for s in status.get("statuses", [])])
+        return _ci_verdict(runs, [s.get("state") for s in status.get("statuses", [])], self._held(sha, ignore=ignore))
 
-    def ci_state_at(self, sha: str, when: str, *, ignore: set[str]) -> bool | None:
+    def ci_state_at(self, sha: str, when: str, *, ignore: set[str]) -> CI:
         """`ci_state` as it stood at `when`, a time as GitHub writes one: of
         each check, the last run started by then, pending if it ended later;
-        of each status, the last one reported by then. A job run again
-        afterwards doesn't change the answer."""
+        of each status, the last one reported by then; of each workflow, the
+        last run created by then, held if it's still waiting for approval. A
+        job run again afterwards doesn't change the answer. A workflow
+        approved only after `when` shows as not run then, not as held: GitHub
+        keeps no record of the wait."""
         # GitHub writes every time the same way (2026-01-31T12:00:00Z), so they compare as text.
         latest: dict[tuple, dict] = {}
         for run in self.paginate(f"{self._r}/commits/{sha}/check-runs", filter="all"):
@@ -214,7 +220,29 @@ class GitHub:
         for status in self.paginate(f"{self._r}/commits/{sha}/statuses"):  # newest first
             if (status.get("created_at") or "") <= when:
                 states.setdefault(status.get("context") or "", status.get("state") or "")
-        return _ci_verdict(runs, list(states.values()))
+        return _ci_verdict(runs, list(states.values()), self._held(sha, ignore=ignore, when=when))
+
+    def _held(self, sha: str, *, ignore: set[str], when: str | None = None) -> bool:
+        """Whether a `pull_request` workflow on the commit waits for a
+        maintainer to approve it, as GitHub has a first-time contributor's
+        fork PR wait. Such a run makes no check runs, so only the workflow
+        runs show it. Of each workflow the last run counts (created by
+        `when`, if given). Listing them takes `actions: read` on a private
+        repo: without it, the answer is the checks' alone, as before."""
+        try:
+            found = list(self.paginate(f"{self._r}/actions/runs", head_sha=sha, event="pull_request"))
+        except GitHubError as exc:
+            if exc.status in (403, 404):
+                return False
+            raise
+        last: dict[object, dict] = {}
+        for run in found:
+            created = run.get("created_at") or ""
+            key = run.get("workflow_id") or run.get("name")
+            if run.get("name") not in ignore and (when is None or created <= when) and (
+                    key not in last or (created, run.get("id") or 0) >= (last[key].get("created_at") or "", last[key].get("id") or 0)):
+                last[key] = run
+        return any(run.get("conclusion") == "action_required" for run in last.values())
 
     # ── comments, reviews and threads ────────────────────────────────────
 
@@ -365,16 +393,19 @@ class GitHub:
         return self.request("PATCH", f"{self._r}/issues/{number}", json={"body": body})
 
 
-def _ci_verdict(runs: list[dict], states: list[str | None]) -> bool | None:
+def _ci_verdict(runs: list[dict], states: list[str | None], held: bool) -> CI:
+    """A failure counts first, whatever else is held or running."""
     if any(r.get("conclusion") in ("failure", "timed_out", "cancelled", "action_required") for r in runs) or any(
         s in ("failure", "error") for s in states
     ):
-        return False
+        return CI.FAILED
+    if held:
+        return CI.HELD
     if not runs and not states:
-        return None
+        return CI.NONE
     if any(r.get("status") != "completed" for r in runs) or any(s == "pending" for s in states):
-        return None
-    return True
+        return CI.PENDING
+    return CI.PASSED
 
 
 def _login(author: dict | None) -> str:

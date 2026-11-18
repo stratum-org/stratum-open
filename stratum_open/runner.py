@@ -61,7 +61,7 @@ class Context:
     # A reply in an inline thread on a PR from a fork reaches Stratum with a token
     # that can write. Not with the Action: GitHub gives that run a read-only one.
     fork_replies: bool = True
-    own_checks: tuple[str, ...] = ()  # check runs of Stratum's own job, which aren't CI
+    own_checks: tuple[str, ...] = ()  # names of Stratum's own job and workflow, whose check runs and workflow runs aren't CI
     log: Callable[[str], None] = print
 
 
@@ -253,7 +253,7 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
     # the linked issues None, so the PR isn't called unlinked, or closed for it.
     facts = PRFacts.from_pull(pull, paths)
     try:
-        facts.ci_ok = gh.ci_state(head, ignore={policy.review.check_name, *ctx.own_checks})
+        facts.ci = gh.ci_state(head, ignore={policy.review.check_name, *ctx.own_checks})
     except GitHubError as exc:
         problems.append(f"Couldn't read the CI status ({exc.status}).")
     try:

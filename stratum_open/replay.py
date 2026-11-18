@@ -9,8 +9,8 @@ Each PR is judged as it was at its last push, as far as GitHub still knows:
 
 - the diff, the paths, the size and the files the checks read in full are
   those of the PR's final commit;
-- CI is that commit's check runs and statuses as they stood when the PR was
-  closed (`GitHub.ci_state_at`), without Stratum's own;
+- CI is that commit's check runs, statuses and workflow runs as they stood
+  when the PR was closed (`GitHub.ci_state_at`), without Stratum's own;
 - linked issues are the closing keywords in the PR's description.
 
 What can't be rebuilt afterwards is left out, never guessed, and the report
@@ -21,8 +21,9 @@ but a replay has no clone, and it would take a walk of the history per PR and
 today's commit emails to match the login.
 
 Requests: two for the run (the repo, its policy) and one per 100 PRs listed;
-then per PR one for the diff, two for CI, and one per file the checks read in
-full (workflows, manifests, Python files).
+then per PR one for the diff, three for CI (check runs, statuses, and the
+workflow runs, for one held for approval), and one per file the checks read
+in full (workflows, manifests, Python files).
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ import requests
 from stratum_open import __version__
 from stratum_open.diff import parse_diff
 from stratum_open.github.api import GitHub, GitHubError
+from stratum_open.platform import CI
 from stratum_open.policy import POLICY_PATH, Policy
 from stratum_open.review import demention
 from stratum_open.runner import Context, check_pull, load_context_policy, skip_reason
@@ -95,7 +97,7 @@ class Row:
     evidence: list[str] = field(default_factory=list)
     score: float = 0.0
     findings: dict[str, int] = field(default_factory=dict)  # the checks' findings: rule -> how many
-    ci: bool | None = None
+    ci: CI | None = None
     linked_issues: list[int] = field(default_factory=list)
     additions: int = 0
     deletions: int = 0
@@ -161,7 +163,7 @@ def _row(ctx: Context, pull: dict, default_branch: str) -> Row:
         facts = PRFacts.from_pull(pull, [f.path for f in files])
         # GitHub's list of PRs has no sizes; the final commit's diff does.
         facts.additions, facts.deletions = sum(f.additions for f in files), sum(f.deletions for f in files)
-        facts.ci_ok = gh.ci_state_at(row.head, row.closed_at, ignore={policy.review.check_name, ACTION_JOB})
+        facts.ci = gh.ci_state_at(row.head, row.closed_at, ignore={policy.review.check_name, ACTION_JOB})
         facts.linked_issues = closing_issues(pull, default_branch)
     except GitHubError as exc:
         if exc.status in (401, 403, 429):  # the token is refused or out of requests: the next PR would fare no better
@@ -173,7 +175,7 @@ def _row(ctx: Context, pull: dict, default_branch: str) -> Row:
     row.key, row.reasons, row.evidence, row.score = result.key, result.reasons, result.evidence, round(result.score, 2)
     by_rule = Counter(f.rule for f in engine.findings)
     row.findings = dict(sorted(by_rule.items(), key=lambda item: (-item[1], item[0])))
-    row.ci, row.linked_issues = facts.ci_ok, facts.linked_issues
+    row.ci, row.linked_issues = facts.ci, facts.linked_issues
     row.additions, row.deletions, row.files = facts.additions, facts.deletions, len(files)
     return row
 
@@ -207,6 +209,8 @@ def notes(policy: Policy) -> list[str]:
         "- The diff, the paths and the size are those of the PR's final commit, and the files the checks read in full are read at that commit.",
         "- CI is that commit's check runs and statuses as they stood when the PR was closed. A job run again later doesn't count. "
         "GitHub keeps check runs for about 400 days, so an older PR can show no CI.",
+        "- CI that never ran because its workflows were still waiting for a maintainer's approval (a first-time contributor's PR) "
+        "counts as held. One approved only after the PR closed shows as not run.",
         f"- Stratum's own check and its Action's job aren't CI, as in a live review. The job is known by the example workflow's name "
         f"for it, `{ACTION_JOB}`; under another name it counts as CI here.",
         "",

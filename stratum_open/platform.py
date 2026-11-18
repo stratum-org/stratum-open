@@ -33,7 +33,18 @@ has to answer.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Protocol
+
+
+class CI(StrEnum):
+    """What a commit's CI says, as `ci_state` reads it."""
+
+    PASSED = "passed"  # every check and status passed
+    FAILED = "failed"  # one failed
+    PENDING = "pending"  # one is still running or queued
+    HELD = "held"  # a workflow waits for a maintainer to approve it, so it hasn't run (GitHub, on a first-time contributor's PR)
+    NONE = "none"  # the commit has no CI
 
 
 class Platform(Protocol):
@@ -72,7 +83,7 @@ class Platform(Protocol):
 
     def check_run_output(self, run_id: int) -> dict: ...  # a started run's {"title", "summary"}; {} when unknown
 
-    def ci_state(self, sha: str, *, ignore: set[str]) -> bool | None: ...
+    def ci_state(self, sha: str, *, ignore: set[str]) -> CI: ...
 
     def linked_issues(self, number: int) -> list[int]: ...
 

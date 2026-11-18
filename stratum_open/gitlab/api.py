@@ -36,6 +36,7 @@ import requests
 from stratum_open.diff import FileDiff, Line, parse_diff
 from stratum_open.github import publish
 from stratum_open.github.api import GitHubError
+from stratum_open.platform import CI
 from stratum_open.util import retry_after
 
 TIMEOUT = 30  # seconds, per call
@@ -240,18 +241,21 @@ class GitLab:
     def linked_issues(self, number: int) -> list[int]:
         return [i["iid"] for i in self.paginate(f"{self._mr(number)}/closes_issues") if isinstance(i.get("iid"), int)]
 
-    def ci_state(self, sha: str, *, ignore: set[str]) -> bool | None:
-        """True when every job and status on the commit passed, False when
-        one failed (one allowed to fail doesn't count), None while one is
-        pending or when there are none. Stratum's own (`ignore`) don't count."""
+    def ci_state(self, sha: str, *, ignore: set[str]) -> CI:
+        """Failed when a job or status on the commit failed (one allowed to
+        fail doesn't count), pending while one is, none when there are none,
+        else passed. Stratum's own (`ignore`) don't count. Never held: GitLab
+        doesn't hold a contributor's pipeline for approval as GitHub does."""
         params = {"ref": self._refs[sha]} if self._refs.get(sha) else {}
         states = [(s.get("status"), bool(s.get("allow_failure")))
                   for s in self.paginate(f"{self._p}/repository/commits/{sha}/statuses", **params) if s.get("name") not in ignore]
         if any(state in ("failed", "canceled") and not allowed for state, allowed in states):
-            return False
-        if not states or any(state in PENDING for state, _ in states):
-            return None
-        return True
+            return CI.FAILED
+        if not states:
+            return CI.NONE
+        if any(state in PENDING for state, _ in states):
+            return CI.PENDING
+        return CI.PASSED
 
     def commit_emails(self, login: str) -> set[str]:
         """Emails on recent commits by the user with this username. GitLab

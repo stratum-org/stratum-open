@@ -1,4 +1,7 @@
-from stratum_open.github.api import GitHub, _login
+import pytest
+
+from stratum_open.github.api import GitHub, GitHubError, _login
+from stratum_open.platform import CI
 
 
 def test_graphql_bot_logins_match_rest_ones_only_for_real_bots():
@@ -74,7 +77,7 @@ def test_ci_is_read_as_it_stood_at_a_time(monkeypatch):
     gh = GitHub("t", "acme/widget")
     closed = "2026-03-02T10:00:00Z"
     asked = []
-    found = {"check-runs": [], "statuses": []}
+    found = {"check-runs": [], "statuses": [], "runs": []}
 
     def paginate(path, **params):
         asked.append((path.rsplit("/", 1)[1], params))
@@ -88,23 +91,99 @@ def test_ci_is_read_as_it_stood_at_a_time(monkeypatch):
         return gh.ci_state_at("a" * 40, closed, ignore={"Stratum"})
 
     monkeypatch.setattr(gh, "paginate", paginate)
-    assert ci() is None  # no CI by then
+    assert ci() == CI.NONE  # no CI by then
     found["check-runs"] = [run("test", "09:00", "09:05", "failure"), run("test", "09:10", "09:15", "success")]
-    assert ci() is True  # run again before the PR closed: the second run is the one that stood
-    assert asked[-2] == ("check-runs", {"filter": "all"})  # GitHub's default hides the earlier runs
+    assert ci() == CI.PASSED  # run again before the PR closed: the second run is the one that stood
+    assert asked[-3] == ("check-runs", {"filter": "all"})  # GitHub's default hides the earlier runs
     found["check-runs"].append(run("test", "11:00", "11:05", "failure"))
-    assert ci() is True  # run again after it closed: not what was known then
+    assert ci() == CI.PASSED  # run again after it closed: not what was known then
     found["check-runs"].append(run("test", "09:00", "09:05", "failure", suite=2))
-    assert ci() is False  # another workflow's job of the same name is its own check
+    assert ci() == CI.FAILED  # another workflow's job of the same name is its own check
     found["check-runs"] = [run("test", "09:00", "09:05", "success"), run("docs", "09:50", "10:20", "failure")]
-    assert ci() is None  # still running when the PR closed, however it ended
+    assert ci() == CI.PENDING  # still running when the PR closed, however it ended
     found["check-runs"] = [run("test", "09:00", "09:05", "success"), run("Stratum", "09:00", "09:05", "failure")]
-    assert ci() is True  # Stratum's own check isn't CI
+    assert ci() == CI.PASSED  # Stratum's own check isn't CI
     found["statuses"] = [  # newest first, as GitHub lists them
         {"context": "docs", "state": "error", "created_at": "2026-03-02T10:30:00Z"},
         {"context": "docs", "state": "success", "created_at": "2026-03-02T09:30:00Z"},
         {"context": "docs", "state": "pending", "created_at": "2026-03-02T09:00:00Z"},
     ]
-    assert ci() is True  # each context's last status by then
+    assert ci() == CI.PASSED  # each context's last status by then
     found["statuses"][1]["state"] = "failure"
-    assert ci() is False
+    assert ci() == CI.FAILED
+
+
+def workflow_run(name, conclusion, created="09:00", *, workflow=None, run_id=1, event="pull_request"):
+    return {"id": run_id, "workflow_id": workflow or name, "name": name, "event": event, "status": "completed",
+            "conclusion": conclusion, "created_at": f"2026-03-02T{created}:00Z", "updated_at": f"2026-03-02T{created}:00Z"}
+
+
+def check_run(name, conclusion="success", status="completed"):
+    return {"name": name, "check_suite": {"id": 1}, "status": status, "conclusion": conclusion,
+            "started_at": "2026-03-02T09:00:00Z", "completed_at": "2026-03-02T09:01:00Z"}
+
+
+def ci_reader(monkeypatch, found):
+    """A client whose reads answer from `found`: check runs, workflow runs and statuses by the path's last part."""
+    gh = GitHub("t", "acme/widget")
+    asked = []
+
+    def paginate(path, **params):
+        asked.append((path.rsplit("/", 1)[1], params))
+        value = found[path.rsplit("/", 1)[1]]
+        if isinstance(value, Exception):
+            raise value
+        return iter(value)
+
+    monkeypatch.setattr(gh, "paginate", paginate)
+    monkeypatch.setattr(gh, "get", lambda path, **params: {"statuses": found["statuses"]})
+    return gh, asked
+
+
+def test_ci_held_for_a_maintainers_approval_is_its_own_state(monkeypatch):
+    # A first-time contributor's fork PR (#162): `tests` waits for approval and made no check runs; the CLA check ran.
+    found = {"check-runs": [check_run("cla"), check_run("Stratum")], "statuses": [], "runs": [workflow_run("tests", "action_required")]}
+    gh, asked = ci_reader(monkeypatch, found)
+    assert gh.ci_state("a" * 40, ignore={"Stratum"}) == CI.HELD
+    assert ("runs", {"head_sha": "a" * 40, "event": "pull_request"}) in asked
+    found["check-runs"].append(check_run("lint", "failure"))
+    assert gh.ci_state("a" * 40, ignore={"Stratum"}) == CI.FAILED  # a check that ran and failed still counts first
+    found["check-runs"].pop()
+    found["check-runs"].append(check_run("lint", None, "in_progress"))
+    assert gh.ci_state("a" * 40, ignore={"Stratum"}) == CI.HELD  # held for approval beats still running
+    found["check-runs"] = []
+    assert gh.ci_state("a" * 40, ignore={"Stratum"}) == CI.HELD  # nothing else ran at all: held, not "no CI"
+    found["runs"] = [workflow_run("Stratum", "action_required")]
+    assert gh.ci_state("a" * 40, ignore={"Stratum"}) == CI.NONE  # Stratum's own workflow isn't CI
+
+
+def test_a_workflow_that_ran_is_read_from_its_checks_as_before(monkeypatch):
+    found = {"check-runs": [check_run("cla"), check_run("tests")], "statuses": [],
+             "runs": [workflow_run("tests", "success"), workflow_run("CLA", "success", event="pull_request")]}
+    gh, _ = ci_reader(monkeypatch, found)
+    assert gh.ci_state("a" * 40, ignore=set()) == CI.PASSED
+    # Approved and run again: the workflow's last run is the one that counts.
+    found["runs"] = [workflow_run("tests", "action_required", "09:00", workflow=5, run_id=1), workflow_run("tests", "success", "09:30", workflow=5, run_id=2)]
+    assert gh.ci_state("a" * 40, ignore=set()) == CI.PASSED
+
+
+def test_a_token_that_cant_list_workflow_runs_still_gets_the_checks(monkeypatch):
+    # Without `actions: read` on a private repo, GitHub refuses the list; the checks still decide, as before.
+    found = {"check-runs": [check_run("tests")], "statuses": [], "runs": GitHubError(403, "Resource not accessible by integration")}
+    gh, _ = ci_reader(monkeypatch, found)
+    assert gh.ci_state("a" * 40, ignore=set()) == CI.PASSED
+    found["runs"] = GitHubError(500, "boom")
+    with pytest.raises(GitHubError):
+        gh.ci_state("a" * 40, ignore=set())
+
+
+def test_ci_held_when_the_pr_closed_is_held_in_a_replay(monkeypatch):
+    closed = "2026-03-02T10:00:00Z"
+    found = {"check-runs": [check_run("cla")], "statuses": [], "runs": [workflow_run("tests", "action_required", "09:00")]}
+    gh, _ = ci_reader(monkeypatch, found)
+    assert gh.ci_state_at("a" * 40, closed, ignore={"Stratum"}) == CI.HELD  # never approved
+    found["runs"] = [workflow_run("tests", "action_required", "11:00")]
+    assert gh.ci_state_at("a" * 40, closed, ignore={"Stratum"}) == CI.PASSED  # a run made after the PR closed wasn't there then
+    found["runs"] = [workflow_run("tests", "action_required", "09:00", workflow=5, run_id=1),
+                     workflow_run("tests", "success", "09:30", workflow=5, run_id=2)]
+    assert gh.ci_state_at("a" * 40, closed, ignore={"Stratum"}) == CI.PASSED  # run again before it closed

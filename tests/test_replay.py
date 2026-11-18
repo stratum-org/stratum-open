@@ -9,7 +9,8 @@ from fakes import FakeGitHub
 
 from stratum_open import cli
 from stratum_open.github.api import GitHub, GitHubError
-from stratum_open.replay import RESERVE, ReadOnlySession, closing_issues, render, replay
+from stratum_open.platform import CI
+from stratum_open.replay import RESERVE, ReadOnlySession, as_dict, closing_issues, render, replay
 
 CLEAN = """diff --git a/src/dates.py b/src/dates.py
 --- a/src/dates.py
@@ -78,7 +79,7 @@ class ClosedPRs(FakeGitHub):
         self.diffed: list[int] = []  # the PRs whose diff was read, in order
         self.ci_asked: list[tuple[str, str]] = []
         self.ci_ignored: set[str] = set()
-        self.ci_of: dict[str, bool | None] = {}  # a commit's CI, where it isn't `ci`
+        self.ci_of: dict[str, CI] = {}  # a commit's CI, where it isn't `ci`
         self.broken: dict[int, int] = {}  # a PR -> the status GitHub answers for its diff
 
     def __getattribute__(self, name):
@@ -149,6 +150,15 @@ def test_each_closed_pr_gets_its_label_beside_what_became_of_it(gh):
     assert ready.evidence == ["CI passes.", "Linked to #3.", "Changes tests."] and ready.findings == {}
 
 
+def test_a_closed_pr_whose_ci_was_never_approved_is_not_ready(gh):
+    gh.ci_of[head_of(11)] = CI.HELD  # a first-time contributor's tests, still waiting for approval when it closed
+    report = replay(gh)
+    held = report.rows[-1]
+    assert (held.number, held.key, held.ci) == (11, "needs_human", CI.HELD) and "CI passes." not in held.evidence
+    assert held.reasons == ["CI hasn't run: a maintainer needs to approve workflows for this first-time contributor."]
+    assert as_dict(report)["pulls"][-1]["ci"] == "held" and json.loads(json.dumps(as_dict(report)))["pulls"][-1]["ci"] == "held"
+
+
 def test_replay_never_writes_to_github(gh, command):
     with pytest.raises(AssertionError):
         gh.comment(11, "the fake refuses this")
@@ -183,10 +193,10 @@ def test_the_replays_session_sends_a_get_and_nothing_else(monkeypatch):
 def test_the_facts_are_those_of_the_prs_final_commit(gh):
     add(gh, 21, diff=MOVED_WORKFLOW)
     gh.files[(".github/workflows/ci.yml", head_of(21))] = PWN  # the workflow's text, as that commit has it
-    gh.ci_of[head_of(21)] = False
+    gh.ci_of[head_of(21)] = CI.FAILED
     moved, _, _, clean = replay(gh).rows
     assert {"workflow/pwn-request", "workflow/write-all"} <= set(moved.findings)  # read in full at the head
-    assert moved.key == "needs_human" and moved.ci is False and moved.head == head_of(21)
+    assert moved.key == "needs_human" and moved.ci == CI.FAILED and moved.head == head_of(21)
     assert gh.ci_asked[0] == (head_of(21), CLOSED_AT)  # that commit's CI, as it stood when the PR closed
     assert gh.ci_ignored == {"Stratum", "stratum"}  # Stratum's check and the Action's job aren't CI
     assert (clean.additions, clean.deletions, clean.files) == (4, 1, 2)  # counted from the diff: GitHub's list has no sizes

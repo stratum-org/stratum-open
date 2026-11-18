@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass, field
 
 from stratum_open.findings import Finding
+from stratum_open.platform import CI
 from stratum_open.policy import Policy
 from stratum_open.review import demention
 from stratum_open.track_record import AuthorRecord
@@ -33,6 +34,8 @@ _DOC_PATH = re.compile(r"(\.(md|rst|txt|adoc)$)|(^|/)docs?/|(^|/)(LICENSE|CHANGE
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _CHECKBOX = re.compile(r"^\s*[-*]\s*\[[ xX]\].*$", re.MULTILINE)
 MIN_DESCRIPTION_CHARS = 40
+# GitHub holds a first-time contributor's `pull_request` workflows until a maintainer approves them.
+HELD = "CI hasn't run: a maintainer needs to approve workflows for this first-time contributor."
 
 
 @dataclass
@@ -45,7 +48,7 @@ class PRFacts:
     additions: int
     deletions: int
     paths: list[str]
-    ci_ok: bool | None = None  # None = pending or no CI
+    ci: CI | None = None  # None = not known: the lookup failed
     # None = the lookup failed, so it isn't known whether the PR links one: never read as "no linked issue".
     linked_issues: list[int] | None = field(default_factory=list)
 
@@ -101,10 +104,11 @@ def triage(
     mismatch: str = "",
     record: AuthorRecord | None = None,
 ) -> Triage:
-    needs_human = _needs_human_reasons(findings)
+    # Untested code from outside isn't ready, nor the author's to fix: a maintainer has to let CI run.
+    needs_human = ([HELD] if facts.ci == CI.HELD else []) + _needs_human_reasons(findings)
 
     needs_work = []
-    if facts.ci_ok is False:
+    if facts.ci == CI.FAILED:
         needs_work.append("CI is failing.")
     blocking = [f for f in findings if f.severity == "critical" or (f.source == "check" and f.blocking and not f.needs_human)]
     if blocking:
@@ -130,7 +134,7 @@ def triage(
         low_effort.append(f"{struck[0]} of the author's last {struck[1]} merged PRs were later reverted or fixed.")
 
     evidence = []
-    if facts.ci_ok:
+    if facts.ci == CI.PASSED:
         evidence.append("CI passes.")
     if facts.linked_issues:
         evidence.append("Linked to " + ", ".join(f"#{n}" for n in facts.linked_issues[:3]) + ".")

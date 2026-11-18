@@ -54,6 +54,7 @@ class FakeGitHubServer:
         self.check_runs: list[dict[str, Any]] = []
         self.ci_runs: dict[str, list[dict[str, Any]]] = {}  # sha -> other projects' check runs
         self.statuses: dict[str, dict[str, Any]] = {}  # sha -> combined status
+        self.workflow_runs: dict[str, list[dict[str, Any]]] = {}  # sha -> workflow runs, each with its "event"
         self.labels: dict[str, dict[str, Any]] = {}
         self.issue_labels: dict[int, list[str]] = {}
         self.issues: list[dict[str, Any]] = []
@@ -447,6 +448,11 @@ def _handler(fake: FakeGitHubServer) -> type[BaseHTTPRequestHandler]:
             if m := re.fullmatch(f"{r}/commits/([^/]+)/check-runs", path):
                 runs = fake.ci_runs.get(m.group(1), []) + [run for run in fake.check_runs if run.get("head_sha") == m.group(1)]
                 return 200, {"total_count": len(runs), "check_runs": runs}, {}
+            if re.fullmatch(f"{r}/actions/runs", path):
+                runs = [run for run in fake.workflow_runs.get(query.get("head_sha", ""), [])
+                        if "event" not in query or run.get("event") == query["event"]]
+                status, chunk, headers = self._page(runs, query, path)
+                return status, {"total_count": len(runs), "workflow_runs": chunk}, headers
             if m := re.fullmatch(f"{r}/commits/([^/]+)/status", path):
                 return 200, fake.statuses.get(m.group(1), {"state": "pending", "statuses": []}), {}
             if m := re.fullmatch(f"{r}/commits/([^/]+)/statuses", path):  # every status reported, newest first

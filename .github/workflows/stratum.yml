@@ -26,6 +26,9 @@ permissions:
   pull-requests: write
   issues: write
   checks: write
+  # Reads the workflow runs, to tell CI waiting for a maintainer's approval (a
+  # first-time contributor's PR) from CI that passed. Needed on a private repo.
+  actions: read
 
 jobs:
   stratum:

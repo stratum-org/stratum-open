@@ -4,7 +4,7 @@ name: Stratum
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, closed]  # closed only rebuilds the triage queue
   issue_comment:
     types: [created]
   # A reply in an inline thread. On a PR from a fork, GitHub gives this run a
@@ -18,7 +18,7 @@ on:
   #   workflows: [tests]
   #   types: [completed]
   schedule:
-    - cron: "17 6 * * *"  # rebuild the triage queue issue once a day
+    - cron: "17 6 * * *"  # rebuild the triage queue issue once a day, as well as after each review
   workflow_dispatch:
 
 permissions:
@@ -32,7 +32,8 @@ jobs:
     # A comment starts the job only if it might hold a command: "/stratum " (with the
     # space, so a link to stratum-org/stratum-open doesn't).
     if: >-
-      github.event_name == 'pull_request_target' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && github.event.action != 'closed') ||
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
       github.event_name == 'workflow_run' ||
       contains(github.event.comment.body, '/stratum ')
     runs-on: ubuntu-latest
@@ -60,3 +61,26 @@ jobs:
           # To use your own server instead, remove this line and set
           # review.endpoint in .stratum/policy.yml (or model-endpoint here).
           ollama-model: gpt-oss:20b
+
+  # Rebuilds the triage queue issue after each PR's review, and when a PR
+  # closes, so it doesn't wait for the daily run. No model: one API read per
+  # open PR and one issue edit. Its group runs one rebuild at a time and a
+  # newer one cancels it, so a burst of PRs ends in one up-to-date queue.
+  queue:
+    needs: stratum
+    if: ${{ !cancelled() && github.event_name == 'pull_request_target' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    concurrency:
+      group: stratum-queue-${{ github.repository }}
+      cancel-in-progress: true
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: ./queue

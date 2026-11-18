@@ -115,6 +115,7 @@ class Triage:
     label_low_effort: bool = True
     require_linked_issue: bool = False
     close_without_issue: bool = False
+    queue: bool = True  # the Action keeps an issue listing every open PR, sorted
 
 
 @dataclass(frozen=True)

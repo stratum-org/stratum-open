@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 import pytest
+import yaml
 
 from fakes import FakeGitHub, FakeModel
 from test_runner import DIFF, model_answer
@@ -159,6 +160,100 @@ def test_schedule_builds_the_queue(tmp_path, monkeypatch):
     run(tmp_path, monkeypatch, "schedule", {"repository": {"default_branch": "main"}}, gh)
     [queue] = gh.issues
     assert queue["title"] == "Stratum triage queue" and "#7 Add a thing" in queue["body"]
+
+
+QUEUE_OFF = "triage:\n  queue: false\n"
+
+
+def run_queue(tmp_path, monkeypatch, payload, gh):
+    """`stratum-open action --queue`, the workflow's queue job."""
+    event = tmp_path / "queue-event.json"
+    event.write_text(json.dumps(payload))
+    monkeypatch.setattr(action, "GitHub", lambda token, repo, api: gh)
+    return action.queue({"GITHUB_EVENT_NAME": "pull_request_target", "GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": "acme/widget",
+                         "STRATUM_GITHUB_TOKEN": "t", "STRATUM_BOT_LOGIN": "stratum[bot]"})
+
+
+@pytest.mark.parametrize("policy, rebuilt", [(None, True), (QUEUE_OFF, False)])
+def test_the_queue_job_rebuilds_the_queue_after_a_review_when_the_queue_is_on(tmp_path, monkeypatch, capsys, policy, rebuilt):
+    gh = FakeGitHub(diff=DIFF)
+    if policy:
+        gh.files[(".stratum/policy.yml", "main")] = policy
+    run(tmp_path, monkeypatch, "pull_request_target", pr_payload(), gh)
+    assert gh.issues == []  # the review job leaves the queue to the queue job
+    assert run_queue(tmp_path, monkeypatch, pr_payload(), gh) == 0
+    if rebuilt:
+        [queue] = gh.issues
+        assert "#7 Add a thing" in queue["body"] and "rebuilt on a schedule" not in queue["body"]
+    else:
+        assert gh.issues == [] and "triage.queue is off" in capsys.readouterr().out
+
+
+def test_the_daily_run_leaves_the_queue_alone_when_it_is_off(tmp_path, monkeypatch, capsys):
+    gh = FakeGitHub(diff=DIFF, files={(".stratum/policy.yml", "main"): QUEUE_OFF})
+    assert run(tmp_path, monkeypatch, "schedule", {"repository": {"default_branch": "main"}}, gh) == 0
+    assert gh.issues == [] and "triage.queue is off" in capsys.readouterr().out
+
+
+def test_a_queue_failure_is_a_warning_and_leaves_the_prs_check_alone(tmp_path, monkeypatch, capsys):
+    gh = FakeGitHub(diff=DIFF)
+    run(tmp_path, monkeypatch, "pull_request_target", pr_payload(), gh)
+    checks = list(gh.checks)
+
+    def refuse(ctx, **kwargs):
+        raise GitHubError(502, "Bad gateway")
+
+    monkeypatch.setattr(action, "update_queue", refuse)
+    assert run_queue(tmp_path, monkeypatch, pr_payload(), gh) == 0
+    assert "::warning::Stratum couldn't rebuild the triage queue" in capsys.readouterr().out
+    assert gh.checks == checks and gh.issues == []
+
+
+def test_a_pr_closing_rebuilds_the_queue_without_the_model(tmp_path, monkeypatch):
+    gh = FakeGitHub(diff=DIFF)
+    run(tmp_path, monkeypatch, "pull_request_target", pr_payload(), gh)
+    run_queue(tmp_path, monkeypatch, pr_payload(), gh)
+    assert "#7 Add a thing" in gh.issues[0]["body"]
+
+    closed = tmp_path / "closed.json"
+    closed.write_text(json.dumps(pr_payload("closed")))
+    assert action.needs_model({"GITHUB_EVENT_NAME": "pull_request_target", "GITHUB_EVENT_PATH": str(closed)}) is False
+    model = FakeModel()  # no answers: a call would fail the test
+    del gh.pulls[7]  # merged: no longer open
+    comments = list(gh.issue_comments_[7])
+    assert run(tmp_path, monkeypatch, "pull_request_target", pr_payload("closed"), gh, model) == 0
+    assert gh.issue_comments_[7] == comments
+    assert run_queue(tmp_path, monkeypatch, pr_payload("closed"), gh) == 0
+    [queue] = gh.issues
+    assert "#7" not in queue["body"]
+
+
+def workflow(path: str) -> dict:
+    return yaml.safe_load((Path(__file__).parent.parent / path).read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("path, uses", [("examples/stratum.yml", "stratum-org/stratum-open/queue@"), (".github/workflows/stratum.yml", "./queue")])
+def test_the_workflow_rebuilds_the_queue_in_its_own_job_after_the_review(path, uses):
+    flow = workflow(path)
+    on = flow.get("on", flow.get(True))  # YAML 1.1 reads a bare `on` as true
+    assert "closed" in on["pull_request_target"]["types"] and "schedule" in on  # the daily run stays, as a backstop
+    jobs = flow["jobs"]
+    # A PR closing starts no review, so no runner and no model for it.
+    assert "github.event.action != 'closed'" in jobs["stratum"]["if"]
+    queue = jobs["queue"]
+    assert queue["needs"] == "stratum"  # after the review, so the queue has its label
+    assert "!cancelled()" in queue["if"] and "pull_request_target" in queue["if"]
+    # One group for the repo: a burst of PRs cancels the older rebuilds rather than queueing one each.
+    assert queue["concurrency"] == {"group": "stratum-queue-${{ github.repository }}", "cancel-in-progress": True}
+    assert queue["permissions"] == {"contents": "read", "pull-requests": "read", "issues": "write"}
+    assert queue["steps"][-1]["uses"].startswith(uses) and "with" not in queue["steps"][-1]
+    assert all("ref" not in (step.get("with") or {}) or "default_branch" in step["with"]["ref"] for step in queue["steps"])
+
+
+def test_the_queue_action_runs_the_queue_mode_only():
+    steps = workflow("queue/action.yml")["runs"]["steps"]
+    runs = [step["run"] for step in steps if "run" in step]
+    assert runs[-1] == "stratum-open action --queue" and not any("ollama" in run.lower() for run in runs)
 
 
 @pytest.mark.parametrize(

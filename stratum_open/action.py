@@ -28,6 +28,7 @@ from stratum_open.triage_queue import update_queue
 from stratum_open.util import redact
 
 DEFAULT_BOT = "github-actions[bot]"
+QUEUE_OFF = "triage.queue is off in .stratum/policy.yml, so there's no queue issue to rebuild."
 
 
 def main(env: Mapping[str, str] = os.environ) -> int:
@@ -141,8 +142,11 @@ def _run(env: Mapping[str, str], event_name: str, payload: dict, gh: GitHub, loa
             outcome = review_pull(ctx, ref["number"])
             print(f"PR #{outcome.number}: re-sorted as {outcome.triage.key if outcome.triage else outcome.status}")
     elif event_name in ("schedule", "workflow_dispatch"):
-        update_queue(ctx)
-        print("Triage queue updated.")
+        if policy.triage.queue:
+            update_queue(ctx)
+            print("Triage queue updated.")
+        else:
+            print(QUEUE_OFF)
     else:
         print(f"Stratum doesn't handle {event_name} events.")
     return 0
@@ -239,6 +243,33 @@ def stopped(env: Mapping[str, str] = os.environ) -> int:
     return 0
 
 
+def queue(env: Mapping[str, str] = os.environ) -> int:
+    """`stratum-open action --queue`, the workflow's queue job: after a PR's
+    review, and when a PR closes, the triage queue issue is rebuilt now
+    rather than at the daily run. No model. It never fails the job, so a
+    PR's checks don't go red over the queue: the next rebuild catches up."""
+    try:
+        with open(env["GITHUB_EVENT_PATH"], encoding="utf-8") as handle_file:
+            payload = json.load(handle_file)
+        payload = payload if isinstance(payload, dict) else {}
+        token = env.get("STRATUM_GITHUB_TOKEN") or env.get("GITHUB_TOKEN")
+        if not token:
+            print("::warning::Stratum needs a GitHub token to rebuild the triage queue: pass github-token to the action.")
+            return 0
+        repo = env.get("GITHUB_REPOSITORY") or (payload.get("repository") or {}).get("full_name") or ""
+        gh = GitHub(token, repo, api=env.get("GITHUB_API_URL") or API)
+        default_branch = (payload.get("repository") or {}).get("default_branch") or gh.repository().get("default_branch") or "main"
+        policy = load_context_policy(gh, default_branch)
+        if not policy.triage.queue:
+            print(QUEUE_OFF)
+            return 0
+        update_queue(Context(gh=gh, policy=policy, model=None, bot=env.get("STRATUM_BOT_LOGIN") or DEFAULT_BOT))
+        print("Triage queue updated.")
+    except Exception as exc:
+        print(f"::warning::Stratum couldn't rebuild the triage queue ({type(exc).__name__}: {redact(str(exc))[:300]}); the next run will.")
+    return 0
+
+
 def context_from_env(policy: Policy, env: Mapping[str, str]) -> Policy:
     """STRATUM_CONTEXT_TOKENS, which the action sets when Ollama runs on the
     runner's CPU: a big prompt there takes longer to read than a model call
@@ -252,8 +283,14 @@ def context_from_env(policy: Policy, env: Mapping[str, str]) -> Policy:
 
 def needs_model(env: Mapping[str, str] = os.environ) -> bool:
     """Whether this event can call the model, so the workflow only starts
-    Ollama when it has to. It asks the same parser that runs the command."""
-    if env.get("GITHUB_EVENT_NAME") not in ("issue_comment", "pull_request_review_comment"):
+    Ollama when it has to. It asks the same parser that runs the command.
+    A PR closing only rebuilds the triage queue."""
+    event_name = env.get("GITHUB_EVENT_NAME")
+    if event_name in ("pull_request", "pull_request_target"):
+        with open(env["GITHUB_EVENT_PATH"], encoding="utf-8") as handle_file:
+            payload = json.load(handle_file)
+        return not (isinstance(payload, dict) and payload.get("action") == "closed")
+    if event_name not in ("issue_comment", "pull_request_review_comment"):
         return True
     with open(env["GITHUB_EVENT_PATH"], encoding="utf-8") as handle_file:
         payload = json.load(handle_file)

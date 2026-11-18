@@ -249,3 +249,17 @@ def test_action_comment_and_schedule_events(fake_github, fake_model, tmp_path):
     result = run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, {"repository": {"default_branch": "main"}}, event="schedule"))
     assert result.returncode == 0 and "Triage queue updated." in result.stdout
     assert [i["title"] for i in fake_github.issues] == ["Stratum triage queue"]
+
+
+def test_action_queue_rebuilds_the_queue_after_a_review_and_a_close(fake_github, fake_model, tmp_path):
+    """`stratum-open action --queue`, the workflow's queue job, after the review job of a PR event."""
+    fake_github.add_pull(7, diff=DIFF)
+    run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, pr_payload()))
+    assert fake_github.issues == []
+    result = run_stratum(["action", "--queue"], env=action_env(fake_github, fake_model, tmp_path, pr_payload()))
+    assert result.returncode == 0 and "Triage queue updated." in result.stdout, result.stderr
+    [queue] = fake_github.issues
+    assert queue["title"] == "Stratum triage queue" and "#7 " in queue["body"]
+    result = run_stratum(["needs-model"], env=action_env(fake_github, fake_model, tmp_path, pr_payload("closed")))
+    assert result.stdout.strip() == "false"
+    assert_no_traceback(result.stderr)

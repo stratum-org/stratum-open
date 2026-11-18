@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import traceback
 from dataclasses import dataclass, replace
 from typing import Mapping
@@ -20,7 +21,7 @@ import requests
 from stratum_open.checks.dependencies import PackageLookup
 from stratum_open.github import publish
 from stratum_open.github.api import API, GitHub, GitHubError
-from stratum_open.github.commands import NEEDS_MODEL, handle, parse, unreadable_reply
+from stratum_open.github.commands import LABEL_COMMANDS, NEEDS_MODEL, handle, parse, unreadable_reply
 from stratum_open.model import model_from_policy
 from stratum_open.policy import Policy
 from stratum_open.runner import Context, checkout_ref, load_context_policy, post_early, review_pull, skip_reason, stop_early
@@ -29,6 +30,9 @@ from stratum_open.util import redact
 
 DEFAULT_BOT = "github-actions[bot]"
 QUEUE_OFF = "triage.queue is off in .stratum/policy.yml, so there's no queue issue to rebuild."
+QUEUE_WAIT = 60  # seconds the queue job waits for a newer event before rebuilding (STRATUM_QUEUE_WAIT)
+# PR events that only change the triage queue: a PR leaving it. No review, no model.
+QUEUE_ONLY = ("closed", "converted_to_draft")
 
 
 def main(env: Mapping[str, str] = os.environ) -> int:
@@ -248,16 +252,29 @@ def stopped(env: Mapping[str, str] = os.environ) -> int:
 
 def queue(env: Mapping[str, str] = os.environ) -> int:
     """`stratum-open action --queue`, the workflow's queue job: after a PR's
-    review, when a PR closes, and on the daily and manual runs. No model. It never fails the job, so a
-    PR's checks don't go red over the queue: the next rebuild catches up."""
+    review, when a PR closes or turns back into a draft, after a command or
+    a CI result that can change a PR's label, and on the daily and manual
+    runs. No model. It never fails the job, so a PR's checks don't go red
+    over the queue: the next rebuild catches up."""
     try:
         with open(env["GITHUB_EVENT_PATH"], encoding="utf-8") as handle_file:
             payload = json.load(handle_file)
         payload = payload if isinstance(payload, dict) else {}
+        event_name = env.get("GITHUB_EVENT_NAME", "")
+        if event_name in ("issue_comment", "pull_request_review_comment"):
+            parsed = parse((payload.get("comment") or {}).get("body") or "")
+            if parsed is None or parsed[0] not in LABEL_COMMANDS:
+                print("This comment can't change a PR's label, so the triage queue stays as it is.")
+                return 0
         token = env.get("STRATUM_GITHUB_TOKEN") or env.get("GITHUB_TOKEN")
         if not token:
             print("::warning::Stratum needs a GitHub token to rebuild the triage queue: pass github-token to the action.")
             return 0
+        if event_name not in ("schedule", "workflow_dispatch"):
+            # A rebuild reads every open PR. While this one waits, a newer event's rebuild in the
+            # job's concurrency group cancels it, before it has made a call, so a burst costs one.
+            raw = (env.get("STRATUM_QUEUE_WAIT") or "").strip()
+            time.sleep(int(raw) if raw.isdigit() else QUEUE_WAIT)
         repo = env.get("GITHUB_REPOSITORY") or (payload.get("repository") or {}).get("full_name") or ""
         gh = GitHub(token, repo, api=env.get("GITHUB_API_URL") or API)
         default_branch = (payload.get("repository") or {}).get("default_branch") or gh.repository().get("default_branch") or "main"
@@ -286,12 +303,12 @@ def context_from_env(policy: Policy, env: Mapping[str, str]) -> Policy:
 def needs_model(env: Mapping[str, str] = os.environ) -> bool:
     """Whether this event can call the model, so the workflow only starts
     Ollama when it has to. It asks the same parser that runs the command.
-    A PR closing only rebuilds the triage queue."""
+    A PR closing or turning back into a draft only rebuilds the triage queue."""
     event_name = env.get("GITHUB_EVENT_NAME")
     if event_name in ("pull_request", "pull_request_target"):
         with open(env["GITHUB_EVENT_PATH"], encoding="utf-8") as handle_file:
             payload = json.load(handle_file)
-        return not (isinstance(payload, dict) and payload.get("action") == "closed")
+        return not (isinstance(payload, dict) and payload.get("action") in QUEUE_ONLY)
     if event_name not in ("issue_comment", "pull_request_review_comment"):
         return True
     with open(env["GITHUB_EVENT_PATH"], encoding="utf-8") as handle_file:

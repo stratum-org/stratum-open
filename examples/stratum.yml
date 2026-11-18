@@ -8,7 +8,8 @@ name: Stratum
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review, closed]  # closed only rebuilds the triage queue
+    # closed and converted_to_draft only rebuild the triage queue: the PR leaves it.
+    types: [opened, synchronize, reopened, ready_for_review, closed, converted_to_draft]
   issue_comment:
     types: [created]
   # A reply in an inline thread. On a PR from a fork, GitHub gives this run a
@@ -36,7 +37,7 @@ jobs:
     # A comment starts the job only if it might hold a command: "/stratum " (with the
     # space, so a link to stratum-org/stratum-open doesn't).
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.action != 'closed') ||
+      (github.event_name == 'pull_request_target' && github.event.action != 'closed' && github.event.action != 'converted_to_draft') ||
       github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
       github.event_name == 'workflow_run' ||
       contains(github.event.comment.body, '/stratum ')
@@ -75,11 +76,13 @@ jobs:
           # Uncomment together with the queue job below, never on its own (see there).
           # triage-queue: false
 
-  # Rebuilds the triage queue issue after each PR's review, when a PR closes,
-  # and on the daily and manual runs, after the stratum job, which keeps warming
-  # the Ollama cache on them. No model: one API read per open PR and one issue
-  # edit. Every rebuild is in one group, which runs one at a time and lets a
-  # newer one cancel it, so a burst of PRs ends in one up-to-date queue.
+  # Rebuilds the triage queue issue after the stratum job: after each PR's
+  # review, when a PR closes or turns back into a draft, after `/stratum review`
+  # or `/stratum ignore` or a CI result that re-sorts a PR, and on the daily and
+  # manual runs. A comment without a command starts neither job.
+  # No model, but about one API call per open PR, so it waits a minute first
+  # (not on the daily and manual runs): every rebuild is in one group, and a
+  # newer one cancels it while it waits, so a burst of events costs one rebuild.
   #
   # Commented out until the release after 0.3.0: stratum-org/stratum-open/queue
   # isn't in v0.3.0, so the job would fail on every run. That release's commit
@@ -92,7 +95,9 @@ jobs:
   #   needs: stratum
   #   if: >-
   #     !cancelled() &&
-  #     (github.event_name == 'pull_request_target' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+  #     (github.event_name == 'pull_request_target' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+  #      ((github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment' || github.event_name == 'workflow_run') &&
+  #       needs.stratum.result == 'success'))
   #   runs-on: ubuntu-latest
   #   permissions:
   #     contents: read

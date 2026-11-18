@@ -165,13 +165,93 @@ def test_schedule_builds_the_queue(tmp_path, monkeypatch):
 QUEUE_OFF = "triage:\n  queue: false\n"
 
 
-def run_queue(tmp_path, monkeypatch, payload, gh):
-    """`stratum-open action --queue`, the workflow's queue job."""
+def run_queue(tmp_path, monkeypatch, payload, gh, event_name="pull_request_target", waits=None, extra=None):
+    """`stratum-open action --queue`, the workflow's queue job. `waits` gets the seconds it waited."""
     event = tmp_path / "queue-event.json"
     event.write_text(json.dumps(payload))
     monkeypatch.setattr(action, "GitHub", lambda token, repo, api: gh)
-    return action.queue({"GITHUB_EVENT_NAME": "pull_request_target", "GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": "acme/widget",
-                         "STRATUM_GITHUB_TOKEN": "t", "STRATUM_BOT_LOGIN": "stratum[bot]"})
+    monkeypatch.setattr(action.time, "sleep", (waits if waits is not None else []).append)
+    return action.queue({"GITHUB_EVENT_NAME": event_name, "GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": "acme/widget",
+                         "STRATUM_GITHUB_TOKEN": "t", "STRATUM_BOT_LOGIN": "stratum[bot]", **(extra or {})})
+
+
+@pytest.mark.parametrize("event_name, extra, waited", [
+    ("pull_request_target", {}, [60]),
+    ("issue_comment", {}, [60]),
+    ("workflow_run", {}, [60]),
+    ("pull_request_target", {"STRATUM_QUEUE_WAIT": "5"}, [5]),
+    ("schedule", {}, []),  # no burst to wait for
+    ("workflow_dispatch", {}, []),
+])
+def test_the_queue_job_waits_for_a_newer_event_before_it_makes_a_call(tmp_path, monkeypatch, event_name, extra, waited):
+    """A newer event's rebuild cancels this one while it waits, so a burst of events reads the open PRs once."""
+    calls = []
+
+    class Counting(FakeGitHub):
+        def open_pulls(self):
+            calls.append(list(waits))  # what had been waited by the first read
+            return super().open_pulls()
+
+    gh, waits = Counting(diff=DIFF), []
+    payload = {**pr_payload(), "comment": {"id": 1, "body": "/stratum review", "user": {"login": "erin", "type": "User"}}}
+    assert run_queue(tmp_path, monkeypatch, payload, gh, event_name, waits, extra) == 0
+    assert waits == waited and calls == [waited] and gh.issues
+
+
+@pytest.mark.parametrize("body, rebuilt", [
+    ("/stratum review", True),
+    ("/Stratum rereview", True),
+    ("/stratum ignore code/sql", True),
+    ("Not this one.\n/stratum ignore", True),
+    ("/stratum help", False),
+    ("/stratum explain 0123456789ab", False),
+    ("/stratum record", False),
+    ("thanks!", False),
+    ("Reply `/stratum ignore` to hide it", False),  # Stratum's own footer: not a command
+])
+def test_a_comment_rebuilds_the_queue_only_when_its_command_can_change_a_label(tmp_path, monkeypatch, capsys, body, rebuilt):
+    gh, waits = FakeGitHub(diff=DIFF), []
+    for event_name in ("issue_comment", "pull_request_review_comment"):
+        payload = {"action": "created", "repository": {"default_branch": "main"}, "issue": {"number": 7, "pull_request": {}},
+                   "comment": {"id": 1, "body": body, "user": {"login": "erin", "type": "User"}}}
+        assert run_queue(tmp_path, monkeypatch, payload, gh, event_name, waits) == 0
+        if rebuilt:
+            assert [i["title"] for i in gh.issues] == ["Stratum triage queue"]
+        else:  # before any wait or API call
+            assert gh.issues == [] and waits == [] and "can't change a PR's label" in capsys.readouterr().out
+    assert waits == ([60, 60] if rebuilt else [])
+
+
+def test_a_label_changing_command_is_followed_by_the_queue(tmp_path, monkeypatch):
+    """The review job runs `/stratum ignore code/sql`, which re-sorts the PR; the queue job then rebuilds with its new label."""
+    gh = FakeGitHub(diff=DIFF)
+    run(tmp_path, monkeypatch, "pull_request_target", pr_payload(), gh)
+    run_queue(tmp_path, monkeypatch, pr_payload(), gh)
+    assert "### triage: needs work (1)" in gh.issues[0]["body"] and "SQL built from strings" in gh.issues[0]["body"]
+    gh.permissions["mona"] = "write"
+    payload = {"action": "created", "repository": {"default_branch": "main"}, "issue": {"number": 7, "pull_request": {}},
+               "comment": {"id": 2, "body": "/stratum ignore code/sql", "user": {"login": "mona", "type": "User"}}}
+    assert run(tmp_path, monkeypatch, "issue_comment", payload, gh) == 0
+    assert "SQL built from strings" in gh.issues[0]["body"]  # the review job leaves the queue to the queue job
+    assert run_queue(tmp_path, monkeypatch, payload, gh, "issue_comment") == 0
+    assert "SQL built from strings" not in gh.issues[0]["body"]
+
+
+def test_a_pr_turned_back_into_a_draft_leaves_the_queue_without_the_model(tmp_path, monkeypatch):
+    gh = FakeGitHub(diff=DIFF)
+    run(tmp_path, monkeypatch, "pull_request_target", pr_payload(), gh)
+    run_queue(tmp_path, monkeypatch, pr_payload(), gh)
+    assert "#7 Add a thing" in gh.issues[0]["body"]
+
+    event = tmp_path / "draft.json"
+    event.write_text(json.dumps(pr_payload("converted_to_draft", draft=True)))
+    assert action.needs_model({"GITHUB_EVENT_NAME": "pull_request_target", "GITHUB_EVENT_PATH": str(event)}) is False
+    gh.pulls[7]["draft"] = True
+    model, comments = FakeModel(), list(gh.issue_comments_[7])
+    assert run(tmp_path, monkeypatch, "pull_request_target", pr_payload("converted_to_draft", draft=True), gh, model) == 0
+    assert model.prompts == [] and gh.issue_comments_[7] == comments
+    assert run_queue(tmp_path, monkeypatch, pr_payload("converted_to_draft", draft=True), gh) == 0
+    assert "#7" not in gh.issues[0]["body"]
 
 
 @pytest.mark.parametrize("policy, rebuilt", [(None, True), (QUEUE_OFF, False)])
@@ -280,10 +360,11 @@ def test_the_example_keeps_the_queue_job_and_triage_queue_commented_until_its_pi
 def test_the_workflow_rebuilds_the_queue_in_its_own_job_after_the_review(path, uses):
     flow = workflow(path, uncomment=path.startswith("examples/"))
     on = flow.get("on", flow.get(True))  # YAML 1.1 reads a bare `on` as true
-    assert "closed" in on["pull_request_target"]["types"] and "schedule" in on  # the daily run stays, as a backstop
+    assert {"closed", "converted_to_draft"} <= set(on["pull_request_target"]["types"]) and "schedule" in on  # the daily run stays
     jobs = flow["jobs"]
-    # A PR closing starts no review, so no runner and no model for it.
+    # A PR closing or turning back into a draft starts no review, so no runner and no model for it.
     assert "github.event.action != 'closed'" in jobs["stratum"]["if"]
+    assert "github.event.action != 'converted_to_draft'" in jobs["stratum"]["if"]
     # The review job still runs on the schedule, which keeps Ollama in the cache, but leaves the queue to the queue job.
     assert "github.event_name == 'schedule'" in jobs["stratum"]["if"]
     [stratum_step] = [step for step in jobs["stratum"]["steps"] if "ollama-model" in (step.get("with") or {})]
@@ -294,12 +375,32 @@ def test_the_workflow_rebuilds_the_queue_in_its_own_job_after_the_review(path, u
     # Every rebuild, the daily and manual ones too, runs in this job's group, so no two overlap.
     assert queue["if"].startswith("!cancelled()")
     for event in ("pull_request_target", "schedule", "workflow_dispatch"):
-        assert f"github.event_name == '{event}'" in queue["if"], event
+        assert starts_the_queue(queue["if"], event, "success") and starts_the_queue(queue["if"], event, "failure"), event
+    assert starts_the_queue(queue["if"], "pull_request_target", "skipped")  # closed and converted_to_draft skip the review
+    assert not starts_the_queue(queue["if"], "pull_request_target", "success", cancelled=True)
+    # A comment or a CI result rebuilds it only when the review job ran: a comment without a
+    # `/stratum ` command skips that job (the same filter as test_the_workflow_starts_a_job_...).
+    for event in ("issue_comment", "pull_request_review_comment", "workflow_run"):
+        assert starts_the_queue(queue["if"], event, "success"), event
+        assert not starts_the_queue(queue["if"], event, "skipped"), event
+        assert not starts_the_queue(queue["if"], event, "failure"), event
+    assert not starts_the_queue(queue["if"], "push", "success")
     # One group for the repo: a burst of PRs cancels the older rebuilds rather than queueing one each.
     assert queue["concurrency"] == {"group": "stratum-queue-${{ github.repository }}", "cancel-in-progress": True}
     assert queue["permissions"] == {"contents": "read", "pull-requests": "read", "issues": "write"}
     assert queue["steps"][-1]["uses"].startswith(uses) and "with" not in queue["steps"][-1]
     assert all("ref" not in (step.get("with") or {}) or "default_branch" in step["with"]["ref"] for step in queue["steps"])
+
+
+def starts_the_queue(condition: str, event_name: str, stratum: str, *, cancelled: bool = False) -> bool:
+    """The queue job's `if:`, read the way GitHub reads it, for one event and the stratum job's result."""
+    names = {"github.event_name": repr(event_name), "needs.stratum.result": repr(stratum), "!cancelled()": repr(not cancelled)}
+    text = condition
+    for name, value in names.items():
+        text = text.replace(name, value)
+    text = text.replace("&&", " and ").replace("||", " or ")
+    assert set(re.findall(r"[a-z_.]+\(", text)) == set(), text  # no other function it would need to know
+    return bool(eval(text, {"__builtins__": {}}))  # noqa: S307 (the workflow file's own expression)
 
 
 def test_the_queue_action_runs_the_queue_mode_only():

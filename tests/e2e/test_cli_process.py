@@ -176,7 +176,8 @@ def action_env(fake_github, fake_model, tmp_path, payload, event="pull_request_t
     path = tmp_path / "event.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     return {"GITHUB_EVENT_NAME": event, "GITHUB_EVENT_PATH": str(path), "GITHUB_REPOSITORY": fake_github.repo, "STRATUM_GITHUB_TOKEN": fake_github.token,
-            "GITHUB_API_URL": fake_github.url, "STRATUM_MODEL_ENDPOINT": fake_model.url, "STRATUM_BOT_LOGIN": fake_github.bot, "STRATUM_JOB_NAME": "stratum"}
+            "GITHUB_API_URL": fake_github.url, "STRATUM_MODEL_ENDPOINT": fake_model.url, "STRATUM_BOT_LOGIN": fake_github.bot, "STRATUM_JOB_NAME": "stratum",
+            "STRATUM_QUEUE_WAIT": "0"}
 
 
 def pr_payload(action="opened", draft=False, head=HEAD):
@@ -289,3 +290,21 @@ def test_the_queue_jobs_check_runs_arent_ci(fake_github, fake_model, tmp_path, s
     assert result.returncode == 0, result.stderr
     summary = fake_github.summary_comments(7)[0]["body"]
     assert "CI passes." in summary and "CI is failing" not in summary
+
+
+def test_action_queue_after_a_comment_rebuilds_only_for_a_label_changing_command(fake_github, fake_model, tmp_path):
+    fake_github.add_pull(7, diff=DIFF)
+    run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, pr_payload()))
+
+    def comment(body):
+        return {"action": "created", "repository": {"default_branch": "main"}, "issue": {"number": 7, "pull_request": {}},
+                "comment": {"id": 9, "body": body, "user": {"login": "erin", "type": "User"}}}
+
+    before = len(fake_github.requests)
+    result = run_stratum(["action", "--queue"], env=action_env(fake_github, fake_model, tmp_path, comment("/stratum help"), event="issue_comment"))
+    assert result.returncode == 0 and "can't change a PR's label" in result.stdout, result.stderr
+    assert fake_github.issues == [] and len(fake_github.requests) == before  # not one call
+    result = run_stratum(["action", "--queue"], env=action_env(fake_github, fake_model, tmp_path, comment("/stratum review"), event="issue_comment"))
+    assert result.returncode == 0 and "Triage queue updated." in result.stdout, result.stderr
+    assert [i["title"] for i in fake_github.issues] == ["Stratum triage queue"]
+    assert_no_traceback(result.stderr)

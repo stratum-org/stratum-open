@@ -31,6 +31,8 @@ MUTE_LEARNS = ("The Action can't store a mute, but this repo has `review.learn_f
 
 # Commands that can call the model: explain, ask, and the ones that review again.
 NEEDS_MODEL = {"review", "re-review", "rereview", "ignore", "explain", "ask"}
+# Commands that review again, so they can change a PR's triage label, and the queue with it.
+LABEL_COMMANDS = {"review", "re-review", "rereview", "ignore"}
 # Explanations per person and per PR in a day: enough to understand a review,
 # too few to turn the model into someone else's free service. Answers to
 # `/stratum ask` count here too: each is a model call of the same kind.

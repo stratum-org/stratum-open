@@ -79,7 +79,7 @@ The workflow uses `pull_request_target` so it can comment on PRs from forks. It'
   - who owns the changed files, from CODEOWNERS.
 - **One triage label:** `ready`, `needs work`, `low effort` or `needs a maintainer`, with the reasons spelled out. It judges what's in front of it: CI, tests, a linked issue, size, and whether the change matches its description. It doesn't try to guess whether AI wrote the PR, because detectors for that aren't reliable. Labels are off until your policy turns them on, and it closes nothing unless your policy says so.
 - **A check run** that fails on a critical finding and is neutral on a high one. Make it required in branch protection if you want it to block merging.
-- **A triage queue:** one issue listing every open PR, cheapest to review and best supported first. The example workflow rebuilds it after each review, when a PR closes, and once a day. `triage.queue: false` turns it off. The GitHub App doesn't keep one yet ([#197](https://github.com/stratum-org/stratum-open/issues/197)).
+- **A triage queue:** one issue listing every open PR, cheapest to review and best supported first. The example workflow rebuilds it once a day, and from the release after 0.3.0 also after each review and when a PR closes ([Upgrading from 0.3.0](#upgrading-from-030)). `triage.queue: false` stops rebuilding it, and `stratum-open triage --post` then refuses to post it; close the issue yourself. The GitHub App doesn't keep one yet ([#197](https://github.com/stratum-org/stratum-open/issues/197)).
 - **Track records:** each author's merged PRs that were later reverted or fixed, read from git history. Every contributor can see their own, with `/stratum record`. A record affects nothing unless your policy says so.
 
 ## Your rules: `.stratum/policy.yml`
@@ -226,14 +226,14 @@ The [benchmark](benchmark/) reviews real merged PRs with each model, and maintai
 
 ## Upgrading from 0.3.0
 
-The triage queue issue is now rebuilt after each PR's review and when a PR closes, not only by the daily run, which GitHub often starts hours late. If you copied [examples/stratum.yml](examples/stratum.yml), copy four changes from it once you pin a release after 0.3.0:
+The release after 0.3.0 rebuilds the triage queue issue after each PR's review and when a PR closes, not only in the daily run, which GitHub often starts hours late. If you copied [examples/stratum.yml](examples/stratum.yml), copy four changes from it:
 
 - `closed` in the `pull_request_target` types;
 - the `stratum` job's `if:` filter, which now starts no review when a PR closes: replace `github.event_name == 'pull_request_target' ||` with `(github.event_name == 'pull_request_target' && github.event.action != 'closed') ||`;
-- the `queue` job, pinned to the same release or commit as the review job. It runs `stratum-org/stratum-open/queue`, which starts no model, after the review job, and a newer rebuild cancels an older one, so a burst of PRs doesn't rebuild the queue once per PR;
-- `triage-queue: false` on the review job's Stratum step, so the daily and manual runs leave the rebuild to the `queue` job and no two rebuilds overlap. That job still runs on them, since its scheduled run is what keeps Ollama in the Actions cache.
+- the `queue` job, named `Stratum triage queue` and pinned to the same release or commit as the review job. It runs `stratum-org/stratum-open/queue`, which starts no model, after the review job, and a newer rebuild cancels an older one, so a burst of PRs doesn't rebuild the queue once per PR. Keep its name: Stratum leaves check runs by that name out of a PR's CI, and a cancelled one would otherwise read as failing CI;
+- `triage-queue: false` on the review job's Stratum step, so the daily and manual runs leave the rebuild to the `queue` job and no two rebuilds overlap. The `stratum` job still runs on them, since its scheduled run is what keeps Ollama in the Actions cache.
 
-Without them, the daily run rebuilds the queue as before.
+The first two work on 0.3.0 and are in the example already. The `queue` job and `triage-queue: false` are commented out there until the release that has the `queue` action, since `stratum-org/stratum-open/queue@v0.3.0` doesn't exist. Uncomment them together when you pin that release: `triage-queue: false` without the job stops the daily rebuild. Without either, the daily run rebuilds the queue as before.
 
 ## Upgrading to 0.3.0
 

@@ -13,7 +13,7 @@ from stratum_open.github import publish
 from stratum_open.github.api import GitHubError
 from stratum_open.github.commands import parse
 from stratum_open.policy import parse_policy
-from stratum_open.runner import Context, review_pull
+from stratum_open.runner import QUEUE_JOB, Context, review_pull
 
 
 def run(tmp_path, monkeypatch, event_name, payload, gh, model=None):
@@ -235,23 +235,50 @@ def test_a_pr_closing_rebuilds_the_queue_without_the_model(tmp_path, monkeypatch
     closed = tmp_path / "closed.json"
     closed.write_text(json.dumps(pr_payload("closed")))
     assert action.needs_model({"GITHUB_EVENT_NAME": "pull_request_target", "GITHUB_EVENT_PATH": str(closed)}) is False
-    model = FakeModel()  # no answers: a call would fail the test
+    model = FakeModel()
     del gh.pulls[7]  # merged: no longer open
     comments = list(gh.issue_comments_[7])
     assert run(tmp_path, monkeypatch, "pull_request_target", pr_payload("closed"), gh, model) == 0
-    assert gh.issue_comments_[7] == comments
+    assert model.prompts == [] and gh.issue_comments_[7] == comments
     assert run_queue(tmp_path, monkeypatch, pr_payload("closed"), gh) == 0
     [queue] = gh.issues
     assert "#7" not in queue["body"]
 
 
-def workflow(path: str) -> dict:
-    return yaml.safe_load((Path(__file__).parent.parent / path).read_text(encoding="utf-8"))
+def workflow(path: str, *, uncomment: bool = False) -> dict:
+    text = (Path(__file__).parent.parent / path).read_text(encoding="utf-8")
+    if uncomment:
+        text = uncommented(text)
+    return yaml.safe_load(text)
+
+
+def uncommented(example: str) -> str:
+    """examples/stratum.yml as the release after 0.3.0 will have it: `triage-queue: false`
+    and the queue job, at the end of the file, uncommented together."""
+    off, on = "          # triage-queue: false\n", "          triage-queue: false\n"
+    assert example.count(off) == 1
+    before, job = example.replace(off, on).split("\n  # queue:\n")
+    # What an editor's "uncomment" does to "  # " at the job's indent.
+    assert all(line.startswith("  # ") or line == "  #" for line in job.splitlines())  # the job runs to the end of the file
+    lines = ["  queue:"] + ["  " + line[4:] for line in job.splitlines()]
+    return before + "\n" + "\n".join(lines) + "\n"
+
+
+def test_the_example_keeps_the_queue_job_and_triage_queue_commented_until_its_pin_has_them():
+    """`stratum-org/stratum-open/queue` isn't in v0.3.0, and `triage-queue: false` without the job stops the daily rebuild."""
+    shipped = workflow("examples/stratum.yml")
+    assert list(shipped["jobs"]) == ["stratum"]
+    [step] = [step for step in shipped["jobs"]["stratum"]["steps"] if "ollama-model" in (step.get("with") or {})]
+    assert "triage-queue" not in step["with"] and step["uses"] == "stratum-org/stratum-open@v0.3.0"
+    later = workflow("examples/stratum.yml", uncomment=True)
+    [step] = [step for step in later["jobs"]["stratum"]["steps"] if "ollama-model" in (step.get("with") or {})]
+    # Uncommented, the queue job is pinned to the review job's release.
+    assert later["jobs"]["queue"]["steps"][-1]["uses"] == step["uses"].replace("stratum-open@", "stratum-open/queue@")
 
 
 @pytest.mark.parametrize("path, uses", [("examples/stratum.yml", "stratum-org/stratum-open/queue@"), (".github/workflows/stratum.yml", "./queue")])
 def test_the_workflow_rebuilds_the_queue_in_its_own_job_after_the_review(path, uses):
-    flow = workflow(path)
+    flow = workflow(path, uncomment=path.startswith("examples/"))
     on = flow.get("on", flow.get(True))  # YAML 1.1 reads a bare `on` as true
     assert "closed" in on["pull_request_target"]["types"] and "schedule" in on  # the daily run stays, as a backstop
     jobs = flow["jobs"]
@@ -262,6 +289,7 @@ def test_the_workflow_rebuilds_the_queue_in_its_own_job_after_the_review(path, u
     [stratum_step] = [step for step in jobs["stratum"]["steps"] if "ollama-model" in (step.get("with") or {})]
     assert stratum_step["with"]["triage-queue"] is False
     queue = jobs["queue"]
+    assert queue["name"] == QUEUE_JOB  # the name its check runs have, which a PR's CI leaves out
     assert queue["needs"] == "stratum"  # after the review, so the queue has its label
     # Every rebuild, the daily and manual ones too, runs in this job's group, so no two overlap.
     assert queue["if"].startswith("!cancelled()")

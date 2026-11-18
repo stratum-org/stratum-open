@@ -462,3 +462,18 @@ def test_triage_post_with_a_personal_token_edits_its_own_queue_issue(monkeypatch
         assert cli.main(["triage", "acme/widget", "--post"]) == 0
     assert [(i["title"], i["user"]["login"]) for i in gh.issues] == [("Stratum triage queue", "github-actions[bot]")]
     capsys.readouterr()
+
+
+def test_triage_post_respects_triage_queue_off(monkeypatch, capsys):
+    from fakes import FakeGitHub
+
+    import stratum_open.github.api as api
+
+    gh = FakeGitHub(diff="", files={(".stratum/policy.yml", "main"): "triage:\n  queue: false\n"})
+    monkeypatch.setattr(api, "GitHub", lambda token, repo, api=None: gh)
+    monkeypatch.setattr(cli, "_token", lambda: "t")
+    monkeypatch.setenv("STRATUM_BOT_LOGIN", "github-actions[bot]")
+    assert cli.main(["triage", "acme/widget", "--post"]) == 1
+    assert gh.issues == [] and "triage.queue is off" in capsys.readouterr().err
+    assert cli.main(["triage", "acme/widget"]) == 0  # printing the queue still works
+    assert "Open PRs sorted by Stratum" in capsys.readouterr().out and gh.issues == []

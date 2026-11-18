@@ -320,6 +320,10 @@ def _triage(args) -> int:
 
     gh = GitHub(_token(), args.repo, api=_api())
     policy = load_context_policy(gh, gh.repository().get("default_branch") or "main")
+    if args.post and not policy.triage.queue:
+        print(f"triage.queue is off in {args.repo}'s .stratum/policy.yml, so the queue issue isn't posted. "
+              "Without --post, this prints the queue.", file=sys.stderr)
+        return 1
     bot = os.environ.get("STRATUM_BOT_LOGIN") or "github-actions[bot]"
     poster = None
     if args.post and not os.environ.get("STRATUM_BOT_LOGIN"):

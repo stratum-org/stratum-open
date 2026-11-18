@@ -70,6 +70,8 @@ jobs:
   # edit. Every rebuild is in one group, which runs one at a time and lets a
   # newer one cancel it, so a burst of PRs ends in one up-to-date queue.
   queue:
+    # Stratum leaves this job's check runs out of a PR's CI by this name (runner.QUEUE_JOB): keep it.
+    name: Stratum triage queue
     needs: stratum
     if: >-
       !cancelled() &&

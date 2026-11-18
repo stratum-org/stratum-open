@@ -72,29 +72,36 @@ jobs:
           # To use your own server instead, remove this line and set
           # review.endpoint in .stratum/policy.yml (or model-endpoint here).
           ollama-model: gpt-oss:20b
-          # The queue job below rebuilds the triage queue, so this job doesn't (new after 0.3.0).
-          triage-queue: false
+          # Uncomment together with the queue job below, never on its own (see there).
+          # triage-queue: false
 
   # Rebuilds the triage queue issue after each PR's review, when a PR closes,
   # and on the daily and manual runs, after the stratum job, which keeps warming
   # the Ollama cache on them. No model: one API read per open PR and one issue
   # edit. Every rebuild is in one group, which runs one at a time and lets a
   # newer one cancel it, so a burst of PRs ends in one up-to-date queue.
-  queue:
-    needs: stratum
-    if: >-
-      !cancelled() &&
-      (github.event_name == 'pull_request_target' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-      issues: write
-    concurrency:
-      group: stratum-queue-${{ github.repository }}
-      cancel-in-progress: true
-    timeout-minutes: 10
-    steps:
-      # The same release or commit as the review job's. The queue action is new after 0.3.0, so until
-      # you pin a release that has it, leave this job out: the daily run still rebuilds the queue.
-      - uses: stratum-org/stratum-open/queue@v0.3.0
+  #
+  # Commented out until the release after 0.3.0: stratum-org/stratum-open/queue
+  # isn't in v0.3.0, so the job would fail on every run. That release's commit
+  # uncomments this job and `triage-queue: false` above, along with the pin bump.
+  # Uncomment both or neither: `triage-queue: false` without this job stops the
+  # daily rebuild. Until then, the stratum job's daily run rebuilds the queue.
+  # queue:
+  #   # Stratum leaves this job's check runs out of a PR's CI by this name: keep it.
+  #   name: Stratum triage queue
+  #   needs: stratum
+  #   if: >-
+  #     !cancelled() &&
+  #     (github.event_name == 'pull_request_target' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: read
+  #     pull-requests: read
+  #     issues: write
+  #   concurrency:
+  #     group: stratum-queue-${{ github.repository }}
+  #     cancel-in-progress: true
+  #   timeout-minutes: 10
+  #   steps:
+  #     # The same release or commit as the review job's.
+  #     - uses: stratum-org/stratum-open/queue@v0.3.0

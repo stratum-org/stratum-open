@@ -155,7 +155,7 @@ def test_a_closed_pr_whose_ci_was_never_approved_is_not_ready(gh):
     report = replay(gh)
     held = report.rows[-1]
     assert (held.number, held.key, held.ci) == (11, "needs_human", CI.HELD) and "CI passes." not in held.evidence
-    assert held.reasons == ["CI hasn't run: a maintainer needs to approve workflows for this first-time contributor."]
+    assert held.reasons == ["CI hasn't run: a maintainer needs to approve the workflows. Comment `/stratum review` once they've run to sort it again."]
     assert as_dict(report)["pulls"][-1]["ci"] == "held" and json.loads(json.dumps(as_dict(report)))["pulls"][-1]["ci"] == "held"
 
 

@@ -4,7 +4,7 @@ from stratum_open.findings import Finding
 from stratum_open.platform import CI
 from stratum_open.policy import parse_policy
 from stratum_open.track_record import AuthorRecord, MergedPR, Strike
-from stratum_open.triage import PRFacts, description_length, is_doc, is_test, render_queue, triage
+from stratum_open.triage import HELD, PRFacts, description_length, is_doc, is_test, render_queue, triage
 
 POLICY = parse_policy(None)
 
@@ -33,7 +33,7 @@ def test_needs_human_beats_everything():
 def test_ci_held_for_approval_is_no_pass_and_goes_to_a_maintainer():
     result = triage(facts(ci=CI.HELD), [], POLICY, matches_description="yes")
     assert result.key == "needs_human" and "CI passes." not in result.evidence
-    assert result.reasons == ["CI hasn't run: a maintainer needs to approve workflows for this first-time contributor."]
+    assert result.reasons == [HELD]
     finding = Finding("Workflow uses pull_request_target", "x", "high", "workflow", ".github/workflows/ci.yml", source="check",
                       rule="workflow/pull-request-target", needs_human=True)
     assert triage(facts(ci=CI.HELD), [finding], POLICY).reasons[1:] == ["Workflow uses pull_request_target (`.github/workflows/ci.yml`)."]
@@ -42,7 +42,15 @@ def test_ci_held_for_approval_is_no_pass_and_goes_to_a_maintainer():
     work = triage(facts(ci=CI.HELD), [secret], POLICY)
     assert work.key == "needs_work" and "CI passes." not in work.evidence
     assert work.reasons == ["1 serious finding to fix: Secret in code.",
-                            "CI hasn't run: a maintainer needs to approve workflows for this first-time contributor."]
+                            HELD]
+    # Little effort shown still reads as low effort; held CI is one more reason, never a pass.
+    bare = facts(ci=CI.HELD, body="", linked_issues=[], paths=["src/dates.py"])
+    assert triage(facts(ci=CI.PASSED, body="", linked_issues=[], paths=["src/dates.py"]), [], POLICY).key == "low_effort"
+    low = triage(bare, [], POLICY)
+    assert low.key == "low_effort" and low.reasons == ["The description is empty or only a few words.", "No linked issue.",
+                                                       "Code changed with no test changes.", HELD]
+    off = parse_policy("triage:\n  label_low_effort: false\n")
+    assert (triage(bare, [], off).key, triage(bare, [], off).reasons) == ("needs_human", [HELD])
     for state in (CI.PENDING, CI.NONE, None):
         assert triage(facts(ci=state), [], POLICY).key == "ready" and "CI passes." not in triage(facts(ci=state), [], POLICY).evidence
 

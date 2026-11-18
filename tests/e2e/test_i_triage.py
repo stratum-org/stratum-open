@@ -51,7 +51,7 @@ def test_ci_waiting_for_approval_is_not_a_pass(fake_github, make_context, fake_m
     fake_model.queue(Response.ok(json_reply([])))
     outcome = review_pull(make_context(policy_text=ON), 7)
     assert outcome.triage.key == "needs_human" and "CI passes." not in outcome.triage.evidence
-    assert "CI hasn't run: a maintainer needs to approve workflows for this first-time contributor." in outcome.triage.reasons
+    assert "CI hasn't run: a maintainer needs to approve the workflows. Comment `/stratum review` once they've run to sort it again." in outcome.triage.reasons
     assert fake_github.labels_on(7) == ["triage: needs a maintainer"]
     asked = fake_github.requests_to("GET", r"/actions/runs$")
     assert [(r["query"]["head_sha"], r["query"]["event"]) for r in asked] == [(HEAD, "pull_request")]

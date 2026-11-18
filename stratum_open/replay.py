@@ -21,10 +21,10 @@ but a replay has no clone, and it would take a walk of the history per PR and
 today's commit emails to match the login.
 
 Requests: two for the run (the repo, its policy) and one per 100 PRs listed;
-then per PR one for the diff, three for CI (check runs, statuses, and the
-workflow runs, for one held for approval, plus one per workflow run started
-again after the PR closed), and one per file the checks read in full
-(workflows, manifests, Python files).
+then per PR one for the diff, three for CI (check runs, statuses, and, unless
+a check failed, the workflow runs, for one held for approval, plus one per
+workflow run started again after the PR closed), and one per file the checks
+read in full (workflows, manifests, Python files).
 """
 
 from __future__ import annotations

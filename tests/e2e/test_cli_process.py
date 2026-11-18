@@ -126,7 +126,8 @@ def test_replay_reads_closed_prs_and_writes_nothing(fake_github, fake_model, tmp
     assert {r["method"] for r in fake_github.requests} == {"GET"}
     assert fake_github.posted_text() == "" and not fake_github.labels and not fake_github.closed
     # The repo, its policy and the list; then a PR's diff, its three CI reads and, for Bandit, its Python file.
-    assert data["requests"] == len(fake_github.requests) == 3 + 2 * (4 + bandit.available())
+    # #7's CI had failed, so its workflow runs aren't read.
+    assert data["requests"] == len(fake_github.requests) == 3 + 2 * (4 + bandit.available()) - 1
     assert fake_github.token not in result.stdout + result.stderr
 
 

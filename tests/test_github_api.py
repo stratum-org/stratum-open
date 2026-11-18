@@ -165,6 +165,15 @@ def test_ci_held_for_a_maintainers_approval_is_its_own_state(monkeypatch):
     assert gh.ci_state("a" * 40, ignore={"Stratum"}) == CI.HELD  # nothing else ran at all: held, not "no CI"
 
 
+def test_a_failed_check_needs_no_workflow_runs(monkeypatch):
+    # A failure is known from the checks: the workflow runs aren't read, so a 5xx there can't lose it.
+    found = {"check-runs": [check_run("lint", "failure")], "statuses": [], "runs": GitHubError(502, "Bad gateway")}
+    gh, asked, _ = ci_reader(monkeypatch, found)
+    assert gh.ci_state("a" * 40, ignore=set()) == CI.FAILED
+    assert gh.ci_state_at("a" * 40, "2026-03-02T10:00:00Z", ignore=set()) == CI.FAILED
+    assert not [path for path, _ in asked if path == "runs" or "/actions/" in path]
+
+
 def test_a_held_workflow_named_like_stratums_check_is_still_held(monkeypatch):
     # The project's tests in a workflow called "Stratum", or beside the Stratum job: the check's name doesn't hide them.
     found = {"check-runs": [check_run("cla")], "statuses": [], "runs": [workflow_run("Stratum", "action_required")]}

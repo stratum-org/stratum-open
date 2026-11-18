@@ -34,8 +34,9 @@ _DOC_PATH = re.compile(r"(\.(md|rst|txt|adoc)$)|(^|/)docs?/|(^|/)(LICENSE|CHANGE
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _CHECKBOX = re.compile(r"^\s*[-*]\s*\[[ xX]\].*$", re.MULTILINE)
 MIN_DESCRIPTION_CHARS = 40
-# GitHub holds a first-time contributor's `pull_request` workflows until a maintainer approves them.
-HELD = "CI hasn't run: a maintainer needs to approve workflows for this first-time contributor."
+# GitHub holds an outside contributor's `pull_request` workflows until a maintainer approves them
+# (first-time contributors by default; every outside collaborator, if the repo says so).
+HELD = "CI hasn't run: a maintainer needs to approve the workflows. Comment `/stratum review` once they've run to sort it again."
 
 
 @dataclass
@@ -116,12 +117,11 @@ def triage(
         needs_work.append("No linked issue, and this project asks for one.")
     if matches_description == "no":
         needs_work.append("The code doesn't do what the description says" + (f": {mismatch}" if mismatch else "."))
-    # Untested code from outside isn't ready: a maintainer has to let CI run, once the author has nothing to fix.
-    if facts.ci == CI.HELD:
-        if needs_work:
-            needs_work.append(HELD)
-        else:
-            needs_human.insert(0, HELD)
+    # Untested code from outside is never ready. It's the author's first if there's something to
+    # fix, or the PR shows little effort; otherwise a maintainer has to let CI run.
+    held = facts.ci == CI.HELD
+    if held and needs_work:
+        needs_work.append(HELD)
 
     code_paths = [p for p in facts.paths if not is_doc(p) and not is_test(p)]
     tests_changed = any(is_test(p) for p in facts.paths)
@@ -151,11 +151,13 @@ def triage(
         evidence.append(f"None of the author's last {struck[1]} merged PRs needed a revert or fix.")
 
     if needs_human:
-        key, reasons = "needs_human", needs_human
+        key, reasons = "needs_human", ([HELD] if held and not needs_work else []) + needs_human
     elif needs_work:
         key, reasons = "needs_work", needs_work
     elif policy.triage.label_low_effort and len(low_effort) >= 3:
-        key, reasons = "low_effort", low_effort
+        key, reasons = "low_effort", low_effort + ([HELD] if held else [])
+    elif held:
+        key, reasons = "needs_human", [HELD]
     else:
         key, reasons = "ready", []
     return Triage(key, reasons, evidence, _score(facts, evidence, needs_work, low_effort))

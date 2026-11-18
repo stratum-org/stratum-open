@@ -201,7 +201,7 @@ class GitHub:
         workflow don't count."""
         runs = [r for r in self.paginate(f"{self._r}/commits/{sha}/check-runs") if r.get("name") not in ignore]
         status = self.get(f"{self._r}/commits/{sha}/status")
-        return _ci_verdict(runs, [s.get("state") for s in status.get("statuses", [])], self._held(sha))
+        return _ci_verdict(runs, [s.get("state") for s in status.get("statuses", [])], lambda: self._held(sha))
 
     def ci_state_at(self, sha: str, when: str, *, ignore: set[str]) -> CI:
         """`ci_state` as it stood at `when`, a time as GitHub writes one: of
@@ -223,7 +223,7 @@ class GitHub:
         for status in self.paginate(f"{self._r}/commits/{sha}/statuses"):  # newest first
             if (status.get("created_at") or "") <= when:
                 states.setdefault(status.get("context") or "", status.get("state") or "")
-        return _ci_verdict(runs, list(states.values()), self._held(sha, when=when))
+        return _ci_verdict(runs, list(states.values()), lambda: self._held(sha, when=when))
 
     def _held(self, sha: str, *, when: str | None = None) -> bool:
         """Whether a `pull_request` workflow on the commit waits for a
@@ -418,13 +418,15 @@ class GitHub:
         return self.request("PATCH", f"{self._r}/issues/{number}", json={"body": body})
 
 
-def _ci_verdict(runs: list[dict], states: list[str | None], held: bool) -> CI:
-    """A failure counts first, whatever else is held or running."""
+def _ci_verdict(runs: list[dict], states: list[str | None], held: Callable[[], bool]) -> CI:
+    """A failure counts first, whatever else is held or running, so `held`
+    (which reads the workflow runs) is asked only when nothing failed: a
+    failing PR costs no request, and a read that fails can't lose it."""
     if any(r.get("conclusion") in ("failure", "timed_out", "cancelled", "action_required") for r in runs) or any(
         s in ("failure", "error") for s in states
     ):
         return CI.FAILED
-    if held:
+    if held():
         return CI.HELD
     if not runs and not states:
         return CI.NONE

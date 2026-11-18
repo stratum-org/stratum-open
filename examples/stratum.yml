@@ -22,7 +22,7 @@ on:
   #   workflows: [tests]
   #   types: [completed]
   schedule:
-    - cron: "17 6 * * *"  # rebuild the triage queue issue once a day, as well as after each review
+    - cron: "17 6 * * *"  # once a day: rebuild the triage queue issue, and keep Ollama in the cache
   workflow_dispatch:
 
 permissions:
@@ -72,14 +72,19 @@ jobs:
           # To use your own server instead, remove this line and set
           # review.endpoint in .stratum/policy.yml (or model-endpoint here).
           ollama-model: gpt-oss:20b
+          # The queue job below rebuilds the triage queue, so this job doesn't (new after 0.3.0).
+          triage-queue: false
 
-  # Rebuilds the triage queue issue after each PR's review, and when a PR
-  # closes, so it doesn't wait for the daily run. No model: one API read per
-  # open PR and one issue edit. Its group runs one rebuild at a time and a
-  # newer one cancels it, so a burst of PRs ends in one up-to-date queue.
+  # Rebuilds the triage queue issue after each PR's review, when a PR closes,
+  # and on the daily and manual runs, after the stratum job, which keeps warming
+  # the Ollama cache on them. No model: one API read per open PR and one issue
+  # edit. Every rebuild is in one group, which runs one at a time and lets a
+  # newer one cancel it, so a burst of PRs ends in one up-to-date queue.
   queue:
     needs: stratum
-    if: ${{ !cancelled() && github.event_name == 'pull_request_target' }}
+    if: >-
+      !cancelled() &&
+      (github.event_name == 'pull_request_target' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read

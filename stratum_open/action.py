@@ -142,7 +142,10 @@ def _run(env: Mapping[str, str], event_name: str, payload: dict, gh: GitHub, loa
             outcome = review_pull(ctx, ref["number"])
             print(f"PR #{outcome.number}: re-sorted as {outcome.triage.key if outcome.triage else outcome.status}")
     elif event_name in ("schedule", "workflow_dispatch"):
-        if policy.triage.queue:
+        if (env.get("STRATUM_TRIAGE_QUEUE") or "").strip().lower() == "false":
+            # Its own job rebuilds it, in one concurrency group with the rebuilds after reviews.
+            print("The workflow's queue job rebuilds the triage queue.")
+        elif policy.triage.queue:
             update_queue(ctx)
             print("Triage queue updated.")
         else:
@@ -245,8 +248,7 @@ def stopped(env: Mapping[str, str] = os.environ) -> int:
 
 def queue(env: Mapping[str, str] = os.environ) -> int:
     """`stratum-open action --queue`, the workflow's queue job: after a PR's
-    review, and when a PR closes, the triage queue issue is rebuilt now
-    rather than at the daily run. No model. It never fails the job, so a
+    review, when a PR closes, and on the daily and manual runs. No model. It never fails the job, so a
     PR's checks don't go red over the queue: the next rebuild catches up."""
     try:
         with open(env["GITHUB_EVENT_PATH"], encoding="utf-8") as handle_file:

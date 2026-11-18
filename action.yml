@@ -25,6 +25,11 @@ inputs:
   model-api-key:
     description: API key for the endpoint, if it needs one. Pass it from a secret.
     default: ""
+  triage-queue:
+    description: >-
+      Whether this job rebuilds the triage queue issue on scheduled and manual runs. The example workflow sets it
+      to false, since its queue job rebuilds the queue then, one rebuild at a time.
+    default: "true"
 
 runs:
   using: composite
@@ -88,6 +93,7 @@ runs:
         STRATUM_MODEL_API_KEY: ${{ inputs.model-api-key }}
         STRATUM_EARLY_CHECK_RUN: ${{ steps.early.outputs.check-run }}
         STRATUM_EARLY_CONCLUSION: ${{ steps.early.outputs.conclusion }}
+        STRATUM_TRIAGE_QUEUE: ${{ inputs.triage-queue }}
       run: stratum-open action
 
     - name: Say the model's review didn't finish

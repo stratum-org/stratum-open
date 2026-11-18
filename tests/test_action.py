@@ -189,6 +189,23 @@ def test_the_queue_job_rebuilds_the_queue_after_a_review_when_the_queue_is_on(tm
         assert gh.issues == [] and "triage.queue is off" in capsys.readouterr().out
 
 
+def test_the_daily_run_leaves_the_queue_to_the_queue_job_when_the_workflow_has_one(tmp_path, monkeypatch, capsys):
+    """`triage-queue: false`: the review job's daily run would race the queue job's rebuilds, outside their group."""
+    gh = FakeGitHub(diff=DIFF)
+    run(tmp_path, monkeypatch, "pull_request_target", pr_payload(), gh)
+    monkeypatch.setattr(action, "update_queue", lambda ctx, **kwargs: pytest.fail("the review job rebuilt the queue"))
+    event = tmp_path / "schedule.json"
+    event.write_text(json.dumps({"repository": {"default_branch": "main"}}))
+    env = {"GITHUB_EVENT_NAME": "schedule", "GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": "acme/widget",
+           "STRATUM_GITHUB_TOKEN": "t", "STRATUM_BOT_LOGIN": "stratum[bot]", "STRATUM_TRIAGE_QUEUE": "false"}
+    assert action.main(env) == 0
+    assert "queue job rebuilds the triage queue" in capsys.readouterr().out
+    monkeypatch.undo()
+    schedule = {"repository": {"default_branch": "main"}}
+    assert run_queue(tmp_path, monkeypatch, schedule, gh) == 0  # the queue job's own run of the same event
+    assert "#7 Add a thing" in gh.issues[0]["body"]
+
+
 def test_the_daily_run_leaves_the_queue_alone_when_it_is_off(tmp_path, monkeypatch, capsys):
     gh = FakeGitHub(diff=DIFF, files={(".stratum/policy.yml", "main"): QUEUE_OFF})
     assert run(tmp_path, monkeypatch, "schedule", {"repository": {"default_branch": "main"}}, gh) == 0
@@ -240,9 +257,16 @@ def test_the_workflow_rebuilds_the_queue_in_its_own_job_after_the_review(path, u
     jobs = flow["jobs"]
     # A PR closing starts no review, so no runner and no model for it.
     assert "github.event.action != 'closed'" in jobs["stratum"]["if"]
+    # The review job still runs on the schedule, which keeps Ollama in the cache, but leaves the queue to the queue job.
+    assert "github.event_name == 'schedule'" in jobs["stratum"]["if"]
+    [stratum_step] = [step for step in jobs["stratum"]["steps"] if "ollama-model" in (step.get("with") or {})]
+    assert stratum_step["with"]["triage-queue"] is False
     queue = jobs["queue"]
     assert queue["needs"] == "stratum"  # after the review, so the queue has its label
-    assert "!cancelled()" in queue["if"] and "pull_request_target" in queue["if"]
+    # Every rebuild, the daily and manual ones too, runs in this job's group, so no two overlap.
+    assert queue["if"].startswith("!cancelled()")
+    for event in ("pull_request_target", "schedule", "workflow_dispatch"):
+        assert f"github.event_name == '{event}'" in queue["if"], event
     # One group for the repo: a burst of PRs cancels the older rebuilds rather than queueing one each.
     assert queue["concurrency"] == {"group": "stratum-queue-${{ github.repository }}", "cancel-in-progress": True}
     assert queue["permissions"] == {"contents": "read", "pull-requests": "read", "issues": "write"}
@@ -336,3 +360,10 @@ def test_the_runners_cpu_gets_small_calls_unless_the_policy_says_otherwise():
     assert context_from_env(pinned, {"STRATUM_CONTEXT_TOKENS": "8192"}).review.context_tokens == 12000
     # Explicit now, so the profile doesn't raise it again.
     assert "review.context_tokens" in context_from_env(parse_policy(None), {"STRATUM_CONTEXT_TOKENS": "8192"}).explicit
+
+
+def test_the_main_action_passes_triage_queue_to_the_review_step():
+    action_yml = workflow("action.yml")
+    assert action_yml["inputs"]["triage-queue"]["default"] == "true"  # a workflow without a queue job rebuilds it as before
+    [review] = [step for step in action_yml["runs"]["steps"] if step.get("id") == "review"]
+    assert review["env"]["STRATUM_TRIAGE_QUEUE"] == "${{ inputs.triage-queue }}"

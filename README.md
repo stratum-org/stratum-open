@@ -226,11 +226,12 @@ The [benchmark](benchmark/) reviews real merged PRs with each model, and maintai
 
 ## Upgrading from 0.3.0
 
-The triage queue issue is now rebuilt after each PR's review and when a PR closes, not only by the daily run, which GitHub often starts hours late. If you copied [examples/stratum.yml](examples/stratum.yml), copy three changes from it once you pin a release after 0.3.0:
+The triage queue issue is now rebuilt after each PR's review and when a PR closes, not only by the daily run, which GitHub often starts hours late. If you copied [examples/stratum.yml](examples/stratum.yml), copy four changes from it once you pin a release after 0.3.0:
 
 - `closed` in the `pull_request_target` types;
 - the `stratum` job's `if:` filter, which now starts no review when a PR closes: replace `github.event_name == 'pull_request_target' ||` with `(github.event_name == 'pull_request_target' && github.event.action != 'closed') ||`;
-- the `queue` job, pinned to the same release or commit as the review job. It runs `stratum-org/stratum-open/queue`, which starts no model, after the review job, and a newer rebuild cancels an older one, so a burst of PRs doesn't rebuild the queue once per PR.
+- the `queue` job, pinned to the same release or commit as the review job. It runs `stratum-org/stratum-open/queue`, which starts no model, after the review job, and a newer rebuild cancels an older one, so a burst of PRs doesn't rebuild the queue once per PR;
+- `triage-queue: false` on the review job's Stratum step, so the daily and manual runs leave the rebuild to the `queue` job and no two rebuilds overlap. That job still runs on them, since its scheduled run is what keeps Ollama in the Actions cache.
 
 Without them, the daily run rebuilds the queue as before.
 

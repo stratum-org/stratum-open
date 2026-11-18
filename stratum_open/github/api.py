@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import base64
 import re
+import sys
 import time
 from itertools import islice
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
 import requests
 
@@ -25,14 +26,17 @@ _NEXT = re.compile(r'<([^>]+)>;\s*rel="next"')
 
 
 class GitHubError(Exception):
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, *, rate_limited: bool = False):
         super().__init__(f"GitHub answered {status}: {message}")
         self.status = status
+        self.rate_limited = rate_limited  # a 403 or 429 for a rate limit, not for the token's rights
 
 
 class GitHub:
-    def __init__(self, token: str, repo: str, *, api: str = API, session: requests.Session | None = None):
+    def __init__(self, token: str, repo: str, *, api: str = API, session: requests.Session | None = None,
+                 log: Callable[[str], None] = lambda line: print(line, file=sys.stderr)):
         self.repo = repo  # owner/name
+        self.log = log  # a read that failed without stopping the answer; stderr is the job's log
         self.api = api.rstrip("/")
         self.session = session or requests.Session()
         self.session.headers.update({
@@ -49,7 +53,7 @@ class GitHub:
         if ok404 and response.status_code == 404:
             return None
         if response.status_code >= 400:
-            raise GitHubError(response.status_code, _message(response))
+            raise GitHubError(response.status_code, _message(response), rate_limited=_secondary_limit(response))
         if response.status_code == 204 or not response.content:
             return None
         if accept and "json" not in accept:
@@ -82,7 +86,7 @@ class GitHub:
         while url:
             response = self._send("GET", url, params=params)
             if response.status_code >= 400:
-                raise GitHubError(response.status_code, _message(response))
+                raise GitHubError(response.status_code, _message(response), rate_limited=_secondary_limit(response))
             data = _json(response) if response.content else []
             if isinstance(data, list):
                 yield from data
@@ -193,20 +197,19 @@ class GitHub:
         """What the commit's checks, statuses and `pull_request` workflow
         runs say: failed when one failed, held when a workflow waits for a
         maintainer's approval, pending while one runs, none when there are
-        none, else passed. Stratum's own checks and workflow (`ignore`, by
-        name) don't count."""
+        none, else passed. Stratum's own checks (`ignore`, by name) and
+        workflow don't count."""
         runs = [r for r in self.paginate(f"{self._r}/commits/{sha}/check-runs") if r.get("name") not in ignore]
         status = self.get(f"{self._r}/commits/{sha}/status")
-        return _ci_verdict(runs, [s.get("state") for s in status.get("statuses", [])], self._held(sha, ignore=ignore))
+        return _ci_verdict(runs, [s.get("state") for s in status.get("statuses", [])], self._held(sha))
 
     def ci_state_at(self, sha: str, when: str, *, ignore: set[str]) -> CI:
         """`ci_state` as it stood at `when`, a time as GitHub writes one: of
         each check, the last run started by then, pending if it ended later;
         of each status, the last one reported by then; of each workflow, the
-        last run created by then, held if it's still waiting for approval. A
-        job run again afterwards doesn't change the answer. A workflow
-        approved only after `when` shows as not run then, not as held: GitHub
-        keeps no record of the wait."""
+        last run created by then, held if it was still waiting for approval
+        then. A job run again afterwards doesn't change the answer, nor does
+        a workflow approved afterwards: its first attempt is still held."""
         # GitHub writes every time the same way (2026-01-31T12:00:00Z), so they compare as text.
         latest: dict[tuple, dict] = {}
         for run in self.paginate(f"{self._r}/commits/{sha}/check-runs", filter="all"):
@@ -220,29 +223,51 @@ class GitHub:
         for status in self.paginate(f"{self._r}/commits/{sha}/statuses"):  # newest first
             if (status.get("created_at") or "") <= when:
                 states.setdefault(status.get("context") or "", status.get("state") or "")
-        return _ci_verdict(runs, list(states.values()), self._held(sha, ignore=ignore, when=when))
+        return _ci_verdict(runs, list(states.values()), self._held(sha, when=when))
 
-    def _held(self, sha: str, *, ignore: set[str], when: str | None = None) -> bool:
+    def _held(self, sha: str, *, when: str | None = None) -> bool:
         """Whether a `pull_request` workflow on the commit waits for a
         maintainer to approve it, as GitHub has a first-time contributor's
         fork PR wait. Such a run makes no check runs, so only the workflow
         runs show it. Of each workflow the last run counts (created by
-        `when`, if given). Listing them takes `actions: read` on a private
-        repo: without it, the answer is the checks' alone, as before."""
+        `when`, if given). Stratum's own workflow runs on
+        `pull_request_target`, which GitHub never holds, so the event leaves
+        it out.
+
+        Listing the runs takes `actions: read` on a private repo. Without it
+        the answer is the checks' alone, as before, and a line says why. A
+        rate limit is raised, as on any other read."""
         try:
             found = list(self.paginate(f"{self._r}/actions/runs", head_sha=sha, event="pull_request"))
         except GitHubError as exc:
-            if exc.status in (403, 404):
-                return False
-            raise
+            if exc.status not in (403, 404) or exc.rate_limited:
+                raise
+            self.log(f"Couldn't list the workflow runs (GitHub answered {exc.status}), so CI waiting for a maintainer's "
+                     "approval can't be told from CI that passed. The workflow's token needs `actions: read`.")
+            return False
         last: dict[object, dict] = {}
         for run in found:
             created = run.get("created_at") or ""
-            key = run.get("workflow_id") or run.get("name")
-            if run.get("name") not in ignore and (when is None or created <= when) and (
+            key = run.get("workflow_id") or run.get("path") or run.get("name")
+            if (when is None or created <= when) and (
                     key not in last or (created, run.get("id") or 0) >= (last[key].get("created_at") or "", last[key].get("id") or 0)):
                 last[key] = run
-        return any(run.get("conclusion") == "action_required" for run in last.values())
+        return any(self._attempt_at(run, when).get("conclusion") == "action_required" for run in last.values())
+
+    def _attempt_at(self, run: dict, when: str | None) -> dict:
+        """The attempt of a workflow run that stood at `when`. Approving a held
+        run, or running it again, keeps its id and `created_at` and starts a
+        new attempt, so a run that started again after `when` is read back
+        through its earlier attempts, newest first: one request each, and
+        usually just one, for the held first attempt."""
+        attempt = run.get("run_attempt") or 1
+        if when is None or attempt <= 1 or (run.get("run_started_at") or "") <= when:
+            return run
+        for number in range(attempt - 1, 1, -1):
+            earlier = self.get(f"{self._r}/actions/runs/{run['id']}/attempts/{number}") or {}
+            if (earlier.get("run_started_at") or "") <= when:
+                return earlier
+        return self.get(f"{self._r}/actions/runs/{run['id']}/attempts/1") or {}  # created by `when`, so it stood then
 
     # ── comments, reviews and threads ────────────────────────────────────
 

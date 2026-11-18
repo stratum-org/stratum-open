@@ -22,8 +22,9 @@ today's commit emails to match the login.
 
 Requests: two for the run (the repo, its policy) and one per 100 PRs listed;
 then per PR one for the diff, three for CI (check runs, statuses, and the
-workflow runs, for one held for approval), and one per file the checks read
-in full (workflows, manifests, Python files).
+workflow runs, for one held for approval, plus one per workflow run started
+again after the PR closed), and one per file the checks read in full
+(workflows, manifests, Python files).
 """
 
 from __future__ import annotations
@@ -209,8 +210,8 @@ def notes(policy: Policy) -> list[str]:
         "- The diff, the paths and the size are those of the PR's final commit, and the files the checks read in full are read at that commit.",
         "- CI is that commit's check runs and statuses as they stood when the PR was closed. A job run again later doesn't count. "
         "GitHub keeps check runs for about 400 days, so an older PR can show no CI.",
-        "- CI that never ran because its workflows were still waiting for a maintainer's approval (a first-time contributor's PR) "
-        "counts as held. One approved only after the PR closed shows as not run.",
+        "- CI whose workflows were still waiting for a maintainer's approval when the PR closed (a first-time contributor's PR) "
+        "counts as held, even if they were approved afterwards.",
         f"- Stratum's own check and its Action's job aren't CI, as in a live review. The job is known by the example workflow's name "
         f"for it, `{ACTION_JOB}`; under another name it counts as CI here.",
         "",

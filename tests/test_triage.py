@@ -37,6 +37,12 @@ def test_ci_held_for_approval_is_no_pass_and_goes_to_a_maintainer():
     finding = Finding("Workflow uses pull_request_target", "x", "high", "workflow", ".github/workflows/ci.yml", source="check",
                       rule="workflow/pull-request-target", needs_human=True)
     assert triage(facts(ci=CI.HELD), [finding], POLICY).reasons[1:] == ["Workflow uses pull_request_target (`.github/workflows/ci.yml`)."]
+    # Something for the author to fix comes first; the held CI is one more reason, never a pass.
+    secret = Finding("Secret in code", "x", "critical", "security", "a.py", 3, source="check", rule="code/secret")
+    work = triage(facts(ci=CI.HELD), [secret], POLICY)
+    assert work.key == "needs_work" and "CI passes." not in work.evidence
+    assert work.reasons == ["1 serious finding to fix: Secret in code.",
+                            "CI hasn't run: a maintainer needs to approve workflows for this first-time contributor."]
     for state in (CI.PENDING, CI.NONE, None):
         assert triage(facts(ci=state), [], POLICY).key == "ready" and "CI passes." not in triage(facts(ci=state), [], POLICY).evidence
 

@@ -61,7 +61,7 @@ class Context:
     # A reply in an inline thread on a PR from a fork reaches Stratum with a token
     # that can write. Not with the Action: GitHub gives that run a read-only one.
     fork_replies: bool = True
-    own_checks: tuple[str, ...] = ()  # names of Stratum's own job and workflow, whose check runs and workflow runs aren't CI
+    own_checks: tuple[str, ...] = ()  # check runs of Stratum's own job, which aren't CI
     log: Callable[[str], None] = print
 
 

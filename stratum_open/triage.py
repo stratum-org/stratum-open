@@ -104,8 +104,7 @@ def triage(
     mismatch: str = "",
     record: AuthorRecord | None = None,
 ) -> Triage:
-    # Untested code from outside isn't ready, nor the author's to fix: a maintainer has to let CI run.
-    needs_human = ([HELD] if facts.ci == CI.HELD else []) + _needs_human_reasons(findings)
+    needs_human = _needs_human_reasons(findings)
 
     needs_work = []
     if facts.ci == CI.FAILED:
@@ -117,6 +116,12 @@ def triage(
         needs_work.append("No linked issue, and this project asks for one.")
     if matches_description == "no":
         needs_work.append("The code doesn't do what the description says" + (f": {mismatch}" if mismatch else "."))
+    # Untested code from outside isn't ready: a maintainer has to let CI run, once the author has nothing to fix.
+    if facts.ci == CI.HELD:
+        if needs_work:
+            needs_work.append(HELD)
+        else:
+            needs_human.insert(0, HELD)
 
     code_paths = [p for p in facts.paths if not is_doc(p) and not is_test(p)]
     tests_changed = any(is_test(p) for p in facts.paths)

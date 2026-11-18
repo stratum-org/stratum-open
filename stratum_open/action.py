@@ -158,8 +158,7 @@ def _context(env: Mapping[str, str], gh: GitHub, policy: Policy, model, default_
         checkout=checkout,
         history_ref=checkout_ref(checkout, default_branch) if checkout else "HEAD",
         lookup=PackageLookup(),
-        # The job's check run, and its workflow's runs, aren't CI.
-        own_checks=tuple(name for name in (env.get("GITHUB_JOB"), env.get("STRATUM_JOB_NAME"), env.get("GITHUB_WORKFLOW")) if name),
+        own_checks=tuple(name for name in (env.get("GITHUB_JOB"), env.get("STRATUM_JOB_NAME")) if name),
         fork_replies=False,
     )
 

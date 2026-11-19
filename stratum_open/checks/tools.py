@@ -153,7 +153,10 @@ def unavailable(name: str, worktree: Worktree | None) -> str | None:
 # environment then finds none of them. Code running as the same user can still read the parent's, so
 # this narrows what leaks; refusing to build code that isn't trusted (runner.worktree_for) is the gate.
 _SECRET_PREFIXES = ("STRATUM_", "ACTIONS_", "INPUT_")
-_SECRET_NAMES = frozenset({"GITHUB_TOKEN", "GH_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"})
+_SECRET_NAMES = frozenset({"GITHUB_TOKEN", "GH_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+                           # The files a step writes to set variables, PATH and outputs for the steps after it, the
+                           # `stratum-open action` step among them, which holds the token.
+                           "GITHUB_ENV", "GITHUB_PATH", "GITHUB_OUTPUT", "GITHUB_STEP_SUMMARY", "GITHUB_STATE"})
 
 
 def build_env(environ: dict[str, str] | None = None) -> dict[str, str]:

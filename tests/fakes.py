@@ -39,7 +39,7 @@ class FakeGitHub:
         self.linked = linked if linked is not None else [3]
         self.pulls = {number: {
             "number": number, "state": "open", "draft": False, "title": title, "body": body,
-            "user": {"login": author}, "head": {"sha": head}, "additions": 10, "deletions": 2, "labels": [],
+            "user": {"login": author, "type": "Bot" if author.lower().endswith("[bot]") else "User"}, "head": {"sha": head}, "additions": 10, "deletions": 2, "labels": [],
         }}
         self.issue_comments_: dict[int, list[dict]] = {number: []}
         self.reviews: list[dict] = []

@@ -396,6 +396,14 @@ def test_a_bots_pr_is_built_only_when_the_policy_allows_it(tmp_path):
     assert "the PR is by a bot (dependabot[bot])" in worktree_for(ctx, pull).refused
     pull["user"] = {"login": "renovate", "type": "Bot"}
     assert "the PR is by a bot (renovate)" in worktree_for(ctx, pull).refused
+    # Only a positive match is a person: anything else is refused like a bot.
+    for user in (None, {}, {"login": "carol"}, {"login": "acme", "type": "Organization"}, {"login": "Dependabot[BOT]", "type": "bot"},
+                 {"login": "helper[bot]", "type": "User"}):
+        pull["user"] = user
+        assert worktree_for(ctx, pull).refused.startswith("the PR is by a bot"), user
+    pull["user"] = {"login": "carol", "type": "User"}
+    assert worktree_for(ctx, pull) == Worktree(str(tmp_path))
+    pull["user"] = {"login": "renovate", "type": "Bot"}
     allowed = parse_policy("checks:\n  go_vet: true\n  build_bot_prs: true\n")
     assert Policy().checks.build_bot_prs is False and allowed.checks.build_bot_prs is True
     ctx = Context(gh=gh, policy=allowed, model=None, bot="stratum[bot]", head_checkout=str(tmp_path))
@@ -420,10 +428,12 @@ def test_the_early_post_refuses_a_fork_too(monkeypatch, tmp_path):
 
 def test_a_build_never_gets_the_jobs_tokens(monkeypatch, tmp_path):
     for key, value in {"STRATUM_GITHUB_TOKEN": "s1", "STRATUM_MODEL_API_KEY": "s2", "GITHUB_TOKEN": "s3", "GH_TOKEN": "s4",
-                       "ACTIONS_RUNTIME_TOKEN": "s5", "INPUT_GITHUB-TOKEN": "s6", "GOPATH": "/go", "HOME": "/home/x"}.items():
+                       "ACTIONS_RUNTIME_TOKEN": "s5", "INPUT_GITHUB-TOKEN": "s6", "GOPATH": "/go", "HOME": "/home/x",
+                       "GITHUB_ENV": "s7", "GITHUB_PATH": "s8", "GITHUB_OUTPUT": "s9", "GITHUB_REPOSITORY": "acme/widget"}.items():
         monkeypatch.setenv(key, value)
     env = tools.build_env()
-    assert not {"s1", "s2", "s3", "s4", "s5", "s6"} & set(env.values())
+    assert not {"s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9"} & set(env.values())
+    assert env["GITHUB_REPOSITORY"] == "acme/widget"  # what isn't a way to reach the job's token stays
     assert env["GOPATH"] == "/go" and env["HOME"] == "/home/x"
     seen = []
     installed(monkeypatch, "go", "staticcheck", "cargo")

@@ -126,7 +126,8 @@ def worktree_for(ctx: Context, pull: dict) -> Worktree | None:
     refused, with the reason:
     - unless the PR's branch is positively in this repository: a fork, a
       deleted fork, or a pull without that field never is;
-    - for a PR a bot opened (Dependabot, Renovate), unless
+    - for a PR a bot opened (Dependabot, Renovate), or one whose author
+      isn't plainly a person (GitHub's type `User`), unless
       `checks.build_bot_prs` is on: its code is a dependency's release, which
       CI builds under `pull_request`, with a read-only token and no secrets;
     - when the checkout isn't at the PR's head, since the lines the tools
@@ -139,8 +140,11 @@ def worktree_for(ctx: Context, pull: dict) -> Worktree | None:
     if not head_repo or head_repo != ctx.gh.repo.lower():
         return Worktree(ctx.head_checkout, "the PR comes from a fork, and building its code would run it in a job that holds "
                                            "this repository's token.")
+    # A person only on a positive match, as for the fork check: no user, no type, a type other than
+    # "User" (Bot, Organization, Mannequin) or a login ending in "[bot]", in any case, is a bot here.
     user = pull.get("user") or {}
-    if (user.get("type") == "Bot" or (user.get("login") or "").endswith("[bot]")) and not ctx.policy.checks.build_bot_prs:
+    person = user.get("type") == "User" and not (user.get("login") or "").lower().endswith("[bot]")
+    if not person and not ctx.policy.checks.build_bot_prs:
         return Worktree(ctx.head_checkout, f"the PR is by a bot ({user.get('login') or 'unknown'}), and building it would run the "
                                            "code of the releases it brings in, in a job that holds this repository's token "
                                            "(`checks.build_bot_prs` allows it).")

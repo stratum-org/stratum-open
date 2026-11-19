@@ -51,6 +51,32 @@ The workflow uses `pull_request_target` so it can comment on PRs from forks. It'
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
 ```
 
+### go vet and Clippy: checks that build the PR
+
+`checks.go_vet` and `checks.clippy` (both off by default) compile the PR's code, so they need a checkout of the PR on disk, and **compiling code runs it**: `cargo clippy` runs build scripts and procedural macros, and obeys a `.cargo/config.toml` that names a program to run in rustc's place; `go vet` runs cgo, and so the C compiler, and downloads the modules `go.mod` names. In a `pull_request_target` workflow that would hand a fork's code a token that can write to your repository.
+
+So they're safe by default:
+- With `stratum-open review --local` they run on your own checkout. Files with uncommitted changes are refused, since the review reads HEAD.
+- The Action never checks out the PR, so they don't run there, and the summary says so, unless the workflow checks the PR out in a folder of its own and passes it as `head-checkout`. Even then, Stratum refuses to build a PR whose branch is in a fork, and one whose checkout isn't at the PR's head. A PR from a branch of your own repository was pushed by someone who can already run code in its workflows. Its build still runs the code of the dependencies it names, so a bot's PR that bumps one (Dependabot, Renovate) runs that release's build scripts too; leave `head-checkout` empty for those if that's a risk you don't take in CI either.
+- The GitHub App has no checkout, so they never run there.
+
+A build that fails, a run past its time limit (5 minutes for go vet, 10 for Clippy) and a missing tool are each a line in the review's coverage, never a finding. To opt in, for PRs from your own branches only:
+
+```yaml
+      # Next to the example workflow's checkout of the default branch, which stays as it is.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr-head
+          persist-credentials: false
+      - uses: stratum-org/stratum-open@main  # `head-checkout` comes after 0.3.0
+        with:
+          head-checkout: ${{ github.event.pull_request.head.repo.full_name == github.repository && 'pr-head' || '' }}
+```
+
+GitHub's Ubuntu runners come with Go, and with Rust and Clippy. If your `go.mod` or `rust-toolchain.toml` asks for a newer version, Go or rustup downloads it, which counts towards the time limit. `staticcheck` you install yourself (`go install honnef.co/go/tools/cmd/staticcheck@latest`); once it's on PATH, go vet adds its SA checks.
+
 ## What it does on each PR
 
 - **Checks that need no model** catch what's risky whoever wrote it:
@@ -67,6 +93,8 @@ The workflow uses `pull_request_target` so it can comment on PRs from forks. It'
   - Python security issues via Bandit, when it's installed;
   - Python errors Ruff can see without running the code (a name nothing defines, a format string that doesn't fit its arguments, `return` outside a function), when it's installed and your policy sets `checks.ruff: true`;
   - in shell scripts, when your policy sets `checks.shellcheck: true` and `shellcheck` is on PATH (GitHub's Ubuntu runners have it), ShellCheck's errors (`x = 1`, `[ $n > 3 ]`, `local` outside a function) and four of its warnings that name a real bug, such as `cmd 2>&1 >log`, on the lines a PR adds. On [65 merged PRs](benchmark/results/2026-11-14-shell-checks/summary.md) that change a script it reported nothing, and on the 23,997 lines of those scripts read as if new, one false alarm, so what it catches is proven on planted cases only. Scripts over 100,000 characters (acme.sh, nvm.sh) aren't read, since ShellCheck can take a minute on one;
+  - in Go, when your policy sets `checks.go_vet: true` and there's a checkout of the PR to build ([where that is](#go-vet-and-clippy-checks-that-build-the-pr)), what `go vet` reports on the lines a PR adds (a `Printf` whose arguments don't fit, a cancel func that's never called, a lock copied by value, unreachable code), and staticcheck's SA checks when it's installed. Not yet measured on merged PRs;
+  - in Rust, when your policy sets `checks.clippy: true`, with a checkout to build the same way, Clippy's `correctness` lints on the lines a PR adds (`a == a`, an index past the end of an array, `vec.resize(0, x)`), never its style ones. Not yet measured on merged PRs;
   - in GitHub workflows, when your policy sets `checks.actionlint: true` and `actionlint` is on PATH, which GitHub's runners don't have ([how to add it](#actionlint-on-the-runner)), what actionlint finds on the lines a PR adds: a `needs:` naming no job, a key GitHub doesn't know, a matrix key that isn't there. On [129 merged PRs](benchmark/results/2026-11-14-shell-checks/summary.md) that change a workflow it reported nothing. On the 24,353 lines of those workflows read as if new it made 21 findings: 9 right but harmless, and 11 false alarms, each something GitHub added after the actionlint release it ran with.
 - **A review by the model:**
   - a summary of what the PR does, and whether that matches its description;

@@ -22,6 +22,12 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -e ".[test,bandit,ruff,js]"
+      - name: Go and Clippy, for the tests that build code
+        # GitHub's Ubuntu runners have both; this stops the job if that changes, rather than skipping the tests.
+        run: |
+          go version
+          cargo clippy --version || rustup component add clippy
+          cargo clippy --version
       - run: pytest -q
 
   e2e:

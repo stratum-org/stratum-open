@@ -56,11 +56,11 @@ The workflow uses `pull_request_target` so it can comment on PRs from forks. It'
 `checks.go_vet` and `checks.clippy` (both off by default) compile the PR's code, so they need a checkout of the PR on disk, and **compiling code runs it**: `cargo clippy` runs build scripts and procedural macros, and obeys a `.cargo/config.toml` that names a program to run in rustc's place; `go vet` runs cgo, and so the C compiler, and downloads the modules `go.mod` names. In a `pull_request_target` workflow that would hand a fork's code a token that can write to your repository.
 
 So they're safe by default:
-- With `stratum-open review --local` they run on your own checkout. Files with uncommitted changes are refused, since the review reads HEAD.
+- With `stratum-open review --local` they run on your own checkout. They need a clean checkout: if any change isn't committed, new files included, they don't run, since the review reads HEAD and a build reads more than the changed files.
 - The Action never checks out the PR, so they don't run there, and the summary says so, unless the workflow checks the PR out in a folder of its own and passes it as `head-checkout`. Even then, Stratum refuses to build a PR whose branch is in a fork, and one whose checkout isn't at the PR's head. A PR from a branch of your own repository was pushed by someone who can already run code in its workflows. Its build still runs the code of the dependencies it names, so a bot's PR that bumps one (Dependabot, Renovate) runs that release's build scripts too; leave `head-checkout` empty for those if that's a risk you don't take in CI either.
 - The GitHub App has no checkout, so they never run there.
 
-A build that fails, a run past its time limit (5 minutes for go vet, 10 for Clippy) and a missing tool are each a line in the review's coverage, never a finding. To opt in, for PRs from your own branches only:
+A build that fails, a run past its time limit (5 minutes for go vet, 10 for Clippy) and a missing tool are each a line in the review's coverage, never a finding. A run past its limit is stopped along with everything it started. To opt in, for PRs from your own branches only:
 
 ```yaml
       # Next to the example workflow's checkout of the default branch, which stays as it is.

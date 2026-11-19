@@ -25,6 +25,7 @@ A build failure is for the project's CI to report, never a finding here.
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import time
 from dataclasses import dataclass
@@ -147,12 +148,31 @@ def unavailable(name: str, worktree: Worktree | None) -> str | None:
 
 
 def run(command: list[str], *, cwd: str, timeout: float, name: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
-    """Run a tool with a time limit. Raises Skipped when it doesn't finish."""
+    """Run a tool with a time limit. Raises Skipped when it doesn't finish,
+    after stopping it and every process it started (the compiler, a build
+    script, a macro), which would otherwise go on running."""
+    group = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+    with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True,
+                          encoding="utf-8", errors="replace", cwd=cwd, env=env, **group) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=max(1.0, timeout))
+        except subprocess.TimeoutExpired:
+            stop_tree(process)
+            process.communicate()
+            raise Skipped(f"{name} took longer than {timeout:.0f} s, so its findings are missing from this review.") from None
+    return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def stop_tree(process: subprocess.Popen) -> None:
+    """Kill a process and everything it started."""
     try:
-        return subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                              timeout=max(1.0, timeout), cwd=cwd, env=env, stdin=subprocess.DEVNULL)
-    except subprocess.TimeoutExpired:
-        raise Skipped(f"{name} took longer than {timeout:.0f} s, so its findings are missing from this review.") from None
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)], capture_output=True, timeout=30)
+        else:
+            os.killpg(process.pid, signal.SIGKILL)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    process.kill()
 
 
 def group_by_root(worktree: str, paths: list[str], marker: str) -> dict[str | None, list[str]]:

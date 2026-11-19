@@ -4,6 +4,8 @@ the PR's code, in a checkout of its head, and so run it."""
 import json
 import os
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -91,6 +93,32 @@ def fake_run(monkeypatch, *results, seen=None):
     monkeypatch.setattr(tools, "run", run)
 
 
+def too_slow(monkeypatch):
+    """Every tool runs past its time limit."""
+
+    class Slow:
+        def __init__(self, command, **kwargs):
+            self.command, self.pid, self.returncode, self.calls = command, 0, None, 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def communicate(self, timeout=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired(self.command, timeout)
+            return "", ""
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr(tools.subprocess, "Popen", Slow)
+    monkeypatch.setattr(tools, "stop_tree", lambda process: process.kill())
+
+
 def installed(monkeypatch, *programs):
     """Only these programs are on PATH, as far as the checks can tell."""
     where = {name: f"/usr/bin/{name}" for name in programs}
@@ -141,11 +169,7 @@ def test_without_go_it_does_nothing_and_says_so(monkeypatch, tmp_path):
 
 def test_go_vet_running_out_of_time_is_a_coverage_line(monkeypatch, tmp_path):
     installed(monkeypatch, "go")
-
-    def too_slow(command, **kwargs):
-        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
-
-    monkeypatch.setattr(tools.subprocess, "run", too_slow)
+    too_slow(monkeypatch)
     monkeypatch.setattr(go_vet, "TIMEOUT_SECONDS", 7)
     notes = []
     assert go_vet.check(parse_diff(new_file("a.go", GO_FILE)), Worktree(str(go_module(tmp_path))), notes) == []
@@ -274,11 +298,7 @@ def test_without_cargo_or_in_time_clippy_says_so(monkeypatch, tmp_path):
     notes = []
     assert clippy.check(files, Worktree(str(rust_crate(tmp_path))), notes) == [] and notes == ["Clippy didn't run: `cargo` isn't on PATH."]
     installed(monkeypatch, "cargo")
-
-    def too_slow(command, **kwargs):
-        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
-
-    monkeypatch.setattr(tools.subprocess, "run", too_slow)
+    too_slow(monkeypatch)
     notes = []
     assert clippy.check(files, Worktree(str(tmp_path)), notes) == []
     assert notes == [f"Clippy took longer than {clippy.TIMEOUT_SECONDS} s, so its findings are missing from this review."]
@@ -386,14 +406,29 @@ def test_a_pr_from_this_repo_is_built_and_reported(monkeypatch, tmp_path):
     assert "go-vet/printf" in {f.rule for f in outcome.findings}
 
 
-def test_review_local_refuses_files_with_uncommitted_changes(tmp_path):
-    root = go_module(tmp_path)
+def test_review_local_refuses_a_checkout_with_uncommitted_changes(tmp_path):
+    root = write(go_module(tmp_path), {"b.go": "package m\n\nvar value = 1\n"})
     committed(root)
     files = parse_diff(new_file("a.go", GO_FILE))
     assert cli._local_worktree(GO, files, str(root)) == Worktree(str(root))
     assert cli._local_worktree(Policy(), files, str(root)) is None
-    (root / "a.go").write_text(GO_FILE + "\nfunc G() {}\n", encoding="utf-8")
-    assert "`a.go` has changes that aren't committed" in cli._local_worktree(GO, files, str(root)).refused
+    # A file the PR doesn't change still goes into the build, so its change counts too.
+    (root / "b.go").write_text('package m\n\nvar value = "one"\n', encoding="utf-8")
+    assert "`b.go` has changes that aren't committed" in cli._local_worktree(GO, files, str(root)).refused
+    git(root, "checkout", "--", "b.go")
+    (root / "c.go").write_text("package m\n", encoding="utf-8")  # one git doesn't know of yet
+    assert "`c.go` has changes that aren't committed" in cli._local_worktree(GO, files, str(root)).refused
+
+
+def test_a_tool_past_its_time_limit_is_stopped_with_what_it_started(tmp_path):
+    marker = tmp_path / "child-still-running"
+    child = f"import time, pathlib; time.sleep(3); pathlib.Path({str(marker)!r}).write_text('x')"
+    parent = f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(30)"
+    with pytest.raises(tools.Skipped, match="took longer than 1 s"):
+        tools.run([sys.executable, "-c", parent], cwd=str(tmp_path), timeout=1, name="the tool")
+    time.sleep(4)
+    assert not marker.exists()
+    assert tools.run([sys.executable, "-c", "print('ok')"], cwd=str(tmp_path), timeout=30, name="x").stdout.strip() == "ok"
 
 
 # ── the real tools ───────────────────────────────────────────────────────

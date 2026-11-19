@@ -249,16 +249,20 @@ def _review_local(args, base: str) -> int:
 def _local_worktree(policy: Policy, files: list, top: str):
     """This checkout, for the checks that build the code (`checks.go_vet`,
     `checks.clippy`): the code is the user's own, and builds here as it would
-    with `go build` or `cargo build`. It's refused when a file they'd report
-    on has changes that aren't committed, since the review reads HEAD."""
+    with `go build` or `cargo build`. It's refused when the checkout has
+    changes that aren't committed, files git doesn't know of included: the
+    review reads HEAD, and a build reads more than the changed files (their
+    package, the manifests, the dependencies)."""
     from stratum_open.checks import clippy, go_vet
     from stratum_open.checks.tools import Worktree, listed
 
     if not (policy.checks.go_vet or policy.checks.clippy):
         return None
-    built = [f.path for f in files if f.status != "deleted" and (go_vet.wanted(f) or clippy.wanted(f))]
-    dirty = (_git_or_none(top, "diff", "--name-only", "--no-renames", "HEAD", "--", *built) or "").splitlines() if built else []
-    if dirty:
+    if not any(f.status != "deleted" and (go_vet.wanted(f) or clippy.wanted(f)) for f in files):
+        return Worktree(top)  # nothing to build: the checks say nothing either way
+    status = _git_or_none(top, "status", "--porcelain", "--no-renames", "--untracked-files=all")
+    dirty = [line[3:] for line in (status or "").splitlines() if len(line) > 3]
+    if status is None or dirty:
         return Worktree(top, f"{listed(dirty)} {'has' if len(dirty) == 1 else 'have'} changes that aren't committed, and the review "
                              "reads HEAD. Commit or stash them, and run it again.")
     return Worktree(top)

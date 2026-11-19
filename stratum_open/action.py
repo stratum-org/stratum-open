@@ -3,6 +3,11 @@
 The workflow checks out the **default branch** (never the PR) so Stratum can
 read the project's history; the PR itself is only ever read through the API.
 That's what makes `pull_request_target` safe here: no code from the PR runs.
+
+The one exception is opt-in: `checks.go_vet` and `checks.clippy` build the
+PR's code, and run only when the workflow also checks the PR out somewhere
+else and passes that folder as `head-checkout` (STRATUM_HEAD_CHECKOUT). For a
+PR from a fork, Stratum refuses to build it (`runner.worktree_for`).
 """
 
 from __future__ import annotations
@@ -157,6 +162,7 @@ def _context(env: Mapping[str, str], gh: GitHub, policy: Policy, model, default_
         bot=env.get("STRATUM_BOT_LOGIN") or DEFAULT_BOT,
         checkout=checkout,
         history_ref=checkout_ref(checkout, default_branch) if checkout else "HEAD",
+        head_checkout=_head_checkout(env.get("STRATUM_HEAD_CHECKOUT")),
         lookup=PackageLookup(),
         own_checks=tuple(name for name in (env.get("GITHUB_JOB"), env.get("STRATUM_JOB_NAME")) if name),
         fork_replies=False,
@@ -259,6 +265,13 @@ def needs_model(env: Mapping[str, str] = os.environ) -> bool:
         payload = json.load(handle_file)
     parsed = parse((payload.get("comment") or {}).get("body", ""))
     return parsed is not None and parsed[0] in NEEDS_MODEL
+
+
+def _head_checkout(path: str | None) -> str | None:
+    """The folder `head-checkout` names, made absolute against the workspace
+    as the workflow's paths are; None when it's unset."""
+    path = (path or "").strip()
+    return os.path.abspath(path) if path else None
 
 
 def _checkout(workspace: str | None) -> str | None:

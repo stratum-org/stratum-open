@@ -13,6 +13,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from stratum_open.checks.tools import Worktree
 from stratum_open.diff import FileDiff, parse_diff, sendable
 from stratum_open.engine import EngineResult, analyze, default_conclusion, effective_policy, snippet_of  # noqa: F401  (effective_policy: re-exported)
 from stratum_open.findings import Finding, placeable, risk_score
@@ -55,6 +56,9 @@ class Context:
     bot: str  # the login Stratum posts as
     storage: Storage = field(default_factory=NullStorage)
     checkout: str | None = None  # a trusted checkout of the default branch, with history
+    # A checkout of the PR's head, for the checks that build its code (checks.go_vet, checks.clippy).
+    # Building runs the code, so `worktree_for` refuses it for a PR from a fork.
+    head_checkout: str | None = None
     history_ref: str = "HEAD"  # the default branch inside `checkout`
     lookup: object | None = None  # registry lookups for the dependency check
     feedback: bool = False  # 👍/👎 counted (the App, which can store them)
@@ -114,6 +118,31 @@ def from_fork(pull: dict, repo: str) -> bool:
     return "repo" in head and ((head["repo"] or {}).get("full_name") or "").lower() != repo.lower()
 
 
+def worktree_for(ctx: Context, pull: dict) -> Worktree | None:
+    """The PR's head on disk for the checks that build its code, when the
+    caller has a checkout of it (`ctx.head_checkout`) and the policy turns
+    one of them on. It's refused, with the reason, for a PR from a fork:
+    building the code runs it (build scripts, macros, cgo), and the job holds
+    a token that can write to this repository. Someone who can push a branch
+    here can already run code in its workflows, so a PR from one is built.
+    It's refused too when the checkout isn't at the PR's head, since the
+    lines the tools report wouldn't be the ones the diff adds."""
+    if not ctx.head_checkout or not (ctx.policy.checks.go_vet or ctx.policy.checks.clippy):
+        return None
+    if from_fork(pull, ctx.gh.repo):
+        return Worktree(ctx.head_checkout, "the PR comes from a fork, and building its code would run it in a job that holds "
+                                           "this repository's token. Run `stratum-open review --local` on a checkout of it instead.")
+    head = (pull.get("head") or {}).get("sha", "")
+    try:
+        at = subprocess.run(["git", "-C", ctx.head_checkout, "rev-parse", "HEAD"], capture_output=True, text=True, timeout=30).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        at = ""
+    if not head or at != head:
+        return Worktree(ctx.head_checkout, f"the checkout of the PR is at {at[:7] or 'no commit'}, not at its head {head[:7]}, "
+                                           "so the lines it would report aren't the ones this review reads.")
+    return Worktree(ctx.head_checkout)
+
+
 def _by_fingerprint(ctx: Context, pull: dict) -> bool:
     """Whether inline comments name their fingerprint, since a reply to them can't be read (see Context.fork_replies)."""
     return not ctx.fork_replies and from_fork(pull, ctx.gh.repo)
@@ -168,7 +197,7 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
     contents = _contents(ctx, files, head, around=around)
     engine = analyze(
         title=pull.get("title") or "", description=pull.get("body") or "", files=files, policy=ctx.policy, model=ctx.model,
-        contents=contents, lookup=ctx.lookup, only_paths=changed if retry else set(), first=retried,
+        contents=contents, lookup=ctx.lookup, only_paths=changed if retry else set(), first=retried, worktree=worktree_for(ctx, pull),
         previous=state.findings,
         notes=notes, hotspots=hotspots, file_notes=file_notes, extra_findings=boundary,
         exclude_fingerprints=set(state.ignored) | set(learned.fingerprints if learned else ()),
@@ -297,7 +326,7 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
     )
 
     coverage = _large_coverage(large) + _coverage(result, incremental, changed - retried if changed is not None else None, state.head, files,
-                                                 contents or {}, retried & read, engine.unread, policy=policy)
+                                                 contents or {}, retried & read, engine.unread, policy=policy) + engine.check_notes
     if ctx.model is not None:
         coverage.append(f"Profile: `{engine.profile}` ({engine.profile_why}).")
         if engine.model_settings:
@@ -437,7 +466,7 @@ def post_early(ctx: Context, number: int) -> Outcome:
     contents = _contents(ctx, files, head)
     engine = analyze(
         title=pull.get("title") or "", description=pull.get("body") or "", files=files, policy=ctx.policy, model=None,
-        contents=contents, lookup=ctx.lookup, extra_findings=_repo_findings(ctx, files),
+        contents=contents, lookup=ctx.lookup, extra_findings=_repo_findings(ctx, files), worktree=worktree_for(ctx, pull),
         exclude_fingerprints=set(state.ignored) | set(learned.fingerprints if learned else ()),
         exclude_rules=set(state.ignored_rules) | set(muted) | set(learned.rules if learned else ()),
     )
@@ -458,7 +487,7 @@ def post_early(ctx: Context, number: int) -> Outcome:
     summary = publish.Summary(
         findings=findings, inline=(on_lines | set(posted)) & {f.fingerprint for f in findings}, policy=policy,
         model_name=ctx.model.name if ctx.model else None, muted=sorted(set(muted) | set(learned.rules)) if learned else muted,
-        coverage=_coverage(None, False, None, "", files, contents or {}, policy=policy), pending=publish.EARLY_PENDING,
+        coverage=_coverage(None, False, None, "", files, contents or {}, policy=policy) + engine.check_notes, pending=publish.EARLY_PENDING,
     )
     # What the check run says if the model never finishes: a review with only the checks, which isn't complete.
     early = publish.Early(head, 0, default_conclusion(findings, False, policy, engine.score), posted)
@@ -671,7 +700,7 @@ def check_pull(ctx: Context, pull: dict, files: list[FileDiff]) -> EngineResult:
     boundary = _history(ctx, files, pull)[2]
     return analyze(
         title=pull.get("title") or "", description=pull.get("body") or "", files=files, policy=ctx.policy, model=None,
-        contents=_contents(ctx, files, pull["head"]["sha"]), lookup=ctx.lookup, extra_findings=boundary,
+        contents=_contents(ctx, files, pull["head"]["sha"]), lookup=ctx.lookup, extra_findings=boundary, worktree=worktree_for(ctx, pull),
     )
 
 

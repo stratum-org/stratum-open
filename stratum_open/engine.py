@@ -49,6 +49,7 @@ class EngineResult:
     large: LargeReview | None = None  # the per-file passes and walkthrough, when the profile ran them
     unread: set[str] = field(default_factory=set)  # paths whose model call failed or was cut off: read them again next time
     model_settings: dict[str, Any] = field(default_factory=dict)  # dotted keys filled in for the model's family, e.g. gpt-oss's review.reasoning
+    check_notes: list[str] = field(default_factory=list)  # coverage lines: the checks that couldn't run or finish (go vet, Clippy), and why
 
 
 def analyze(
@@ -74,6 +75,7 @@ def analyze(
     score: Callable[[list[Finding], int], int] | None = None,
     conclusion: Callable[[list[Finding], int, bool], str] | None = None,
     log: Callable[[str, str], None] | None = None,
+    worktree: Any | None = None,
 ) -> EngineResult:
     """Review a diff.
 
@@ -93,6 +95,10 @@ def analyze(
       own docs and examples). `file_notes`: notes for one file's own call in
       the per-file passes, by path.
     - `extra_findings`: the caller's own findings, merged before de-duplication.
+    - `worktree`: a `stratum_open.checks.Worktree`, the PR's head checked out
+      on disk, for the checks that build the code (`checks.go_vet`,
+      `checks.clippy`). Building runs the PR's code: pass one only where that's
+      safe, or with `refused` saying why not.
     - `weigh(findings) -> (findings, risk_bonus)`, `score(findings, risk_bonus)`,
       `conclusion(findings, score, complete)`: replace the defaults.
     """
@@ -100,7 +106,9 @@ def analyze(
 
     policy, profile, profile_why, model_settings = _effective_policy(policy, model)
     registry = lookup if policy.dependencies.registry_lookup else None
-    checks = run_checks(files, policy, lookup=registry, contents=contents, pr_text=f"{title}\n{description or ''}")
+    check_notes: list[str] = []
+    checks = run_checks(files, policy, lookup=registry, contents=contents, pr_text=f"{title}\n{description or ''}",
+                        worktree=worktree, notes=check_notes)
 
     result: ReviewResult | None = None
     large: LargeReview | None = None
@@ -176,7 +184,7 @@ def analyze(
     total = score(kept, bonus) if score is not None else max(0, min(100, risk_score(kept) + bonus))
     verdict = conclusion(kept, total, complete) if conclusion is not None else default_conclusion(kept, complete, policy, total)
     return EngineResult(kept, gone, excluded, result, policy, profile, profile_why, total, verdict, complete, large=large,
-                        unread=unread, model_settings=model_settings)
+                        unread=unread, model_settings=model_settings, check_notes=check_notes)
 
 
 def effective_policy(policy: Policy, model: Any | None) -> tuple[Policy, str, str]:

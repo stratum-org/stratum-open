@@ -25,6 +25,12 @@ inputs:
   model-api-key:
     description: API key for the endpoint, if it needs one. Pass it from a secret.
     default: ""
+  head-checkout:
+    description: >-
+      A folder where the workflow checked out the PR's head, for checks.go_vet and checks.clippy, which build the code
+      and so run it. Leave empty (the default) and they don't run. Stratum refuses to build a PR from a fork, whatever
+      this says; see the README before setting it.
+    default: ""
 
 runs:
   using: composite
@@ -55,6 +61,7 @@ runs:
         STRATUM_JOB_NAME: ${{ github.job }}
         STRATUM_MODEL_NAME: ${{ inputs.ollama-model != '' && inputs.ollama-model || inputs.model-name }}
         STRATUM_MODEL_API_KEY: ${{ inputs.model-api-key }}
+        STRATUM_HEAD_CHECKOUT: ${{ inputs.head-checkout }}
       run: stratum-open action --early
 
     - name: Cache Ollama and the model
@@ -88,6 +95,7 @@ runs:
         STRATUM_MODEL_API_KEY: ${{ inputs.model-api-key }}
         STRATUM_EARLY_CHECK_RUN: ${{ steps.early.outputs.check-run }}
         STRATUM_EARLY_CONCLUSION: ${{ steps.early.outputs.conclusion }}
+        STRATUM_HEAD_CHECKOUT: ${{ inputs.head-checkout }}
       run: stratum-open action
 
     - name: Say the model's review didn't finish

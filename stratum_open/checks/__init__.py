@@ -10,14 +10,18 @@ from __future__ import annotations
 
 from typing import Callable
 
-from stratum_open.checks import actionlint, agents, awaits, bandit, common, dependencies, heuristics, paths, patterns, promises, ruff, shellcheck, tests_weakened, workflows
+from stratum_open.checks import (
+    actionlint, agents, awaits, bandit, clippy, common, dependencies, go_vet, heuristics, paths, patterns, promises, ruff, shellcheck,
+    tests_weakened, workflows,
+)
 from stratum_open.checks.common import looks_binary
 from stratum_open.checks.dependencies import PackageInfo, PackageLookup
+from stratum_open.checks.tools import Worktree
 from stratum_open.diff import FileDiff
 from stratum_open.findings import Finding
 from stratum_open.policy import Policy
 
-__all__ = ["PackageInfo", "PackageLookup", "gained", "looks_binary", "moved_in", "run_checks"]
+__all__ = ["PackageInfo", "PackageLookup", "Worktree", "gained", "looks_binary", "moved_in", "run_checks"]
 
 # The checks here whose rules depend on a file's path. Of the others, hidden
 # Unicode looks at every path, and protected paths and coding-agent files at
@@ -50,6 +54,8 @@ def run_checks(
     lookup: PackageLookup | None = None,
     contents: dict[str, str] | None = None,
     pr_text: str = "",
+    worktree: Worktree | None = None,
+    notes: list[str] | None = None,
 ) -> list[Finding]:
     """Every check over the PR's files. `lookup` asks package registries
     about new dependencies, and OSV about pinned versions when
@@ -57,11 +63,14 @@ def run_checks(
     `dependencies.registry_lookup` is on);
     `contents` maps a path to its full new text, when the caller has it, and
     lets the checks see past the diff's context. `pr_text` is the PR's title
-    and description, for the heuristics.
+    and description, for the heuristics. `worktree` is a checkout of the PR's
+    head, for the checks that build the code (go vet, Clippy); `notes` gets a
+    coverage line for each of those that couldn't run, or finish.
 
     One check failing never stops the others: it becomes a low finding
     saying which check didn't run."""
     contents = contents or {}
+    notes = notes if notes is not None else []
     registry = lookup if policy.dependencies.registry_lookup else None
     checks: list[tuple[str, Callable[[], list[Finding]]]] = [
         ("protected paths", lambda: paths.check(files, policy)),
@@ -80,6 +89,10 @@ def run_checks(
         checks.append(("ShellCheck", lambda: shellcheck.check(files, contents)))
     if policy.checks.actionlint:
         checks.append(("actionlint", lambda: actionlint.check(files, contents)))
+    if policy.checks.go_vet:
+        checks.append(("go vet", lambda: go_vet.check(files, worktree, notes)))
+    if policy.checks.clippy:
+        checks.append(("Clippy", lambda: clippy.check(files, worktree, notes)))
     if policy.checks.floating_promises:
         checks.append(("floating promise", lambda: promises.check(files, contents)))
     if policy.checks.heuristics:

@@ -80,6 +80,10 @@ class Checks:
     removed_names: bool = False  # in Python, a name a PR removes from a module while another file still imports or uses it; needs a checkout
     shellcheck: bool = False  # ShellCheck's errors, and the warnings that name a real bug, on added lines of shell scripts; needs `shellcheck` on PATH
     actionlint: bool = False  # actionlint's errors on added lines of GitHub workflows (a key GitHub doesn't know, a `needs:` with no such job); needs `actionlint` on PATH
+    # The two below build the PR's code, which runs it, so they need a checkout of the PR's head: the CLI's
+    # `review --local`, or the Action's `head-checkout`, which is refused for a PR from a fork.
+    go_vet: bool = False  # go vet's findings (and staticcheck's SA checks, if it's installed) on added lines of Go code; needs `go` on PATH
+    clippy: bool = False  # Clippy's correctness lints on added lines of Rust code; needs `cargo` with the clippy component
 
 
 @dataclass(frozen=True)

@@ -74,6 +74,13 @@ checks:
                                #   needs `shellcheck` on PATH (GitHub's Ubuntu runners have it)
   actionlint: false            # true reports actionlint's errors on lines a PR adds to a workflow (a key GitHub doesn't know, a `needs:` with no such job);
                                #   needs `actionlint` on PATH, which GitHub's runners don't have (see the README)
+  # The two below build the PR's code, and building runs it (cgo; build scripts and macros). They need a checkout
+  # of the PR's head: `stratum-open review --local`, or the Action's `head-checkout` input, which Stratum refuses
+  # for a PR from a fork. Without one, the review's coverage says they didn't run. See the README first.
+  go_vet: false                # true reports go vet's findings (a Printf that doesn't fit its arguments, a lost cancel func, a
+                               #   copied lock), and staticcheck's SA checks if it's installed, on lines a PR adds to Go code; needs `go`
+  clippy: false                # true reports Clippy's correctness lints (`a == a`, an index past the end) on lines a PR adds to
+                               #   Rust code; needs `cargo` with the clippy component
 
 commands:                      # who may run each /stratum command: anyone | author | write
   review: write                # "author" is the PR's author or anyone with write access

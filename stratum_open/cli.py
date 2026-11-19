@@ -221,6 +221,7 @@ def _review_local(args, base: str) -> int:
             contents[file.path] = text
     top = (_git_or_none(".", "rev-parse", "--show-toplevel") or ".").strip()
     result = analyze(
+        worktree=_local_worktree(policy, files, top),
         title=_git(".", "log", "-1", "--format=%s").strip(), description=_git(".", "log", "-1", "--format=%b").strip(),
         files=files, policy=policy, model=model, contents=contents or None,
         lookup=PackageLookup() if policy.dependencies.registry_lookup else None,
@@ -239,8 +240,28 @@ def _review_local(args, base: str) -> int:
         elif result.review is not None and result.review.summary:
             print(f"What this changes: {result.review.summary}\n")
     _print_findings(result.findings)
+    for note in result.check_notes:
+        print(note, file=sys.stderr)
     _write_json(args.json, result.findings)
     return 1 if any(f.severity == "critical" for f in result.findings) else 0
+
+
+def _local_worktree(policy: Policy, files: list, top: str):
+    """This checkout, for the checks that build the code (`checks.go_vet`,
+    `checks.clippy`): the code is the user's own, and builds here as it would
+    with `go build` or `cargo build`. It's refused when a file they'd report
+    on has changes that aren't committed, since the review reads HEAD."""
+    from stratum_open.checks import clippy, go_vet
+    from stratum_open.checks.tools import Worktree, listed
+
+    if not (policy.checks.go_vet or policy.checks.clippy):
+        return None
+    built = [f.path for f in files if f.status != "deleted" and (go_vet.wanted(f) or clippy.wanted(f))]
+    dirty = (_git_or_none(top, "diff", "--name-only", "--no-renames", "HEAD", "--", *built) or "").splitlines() if built else []
+    if dirty:
+        return Worktree(top, f"{listed(dirty)} {'has' if len(dirty) == 1 else 'have'} changes that aren't committed, and the review "
+                             "reads HEAD. Commit or stash them, and run it again.")
+    return Worktree(top)
 
 
 def _print_findings(findings: list[Finding]) -> None:

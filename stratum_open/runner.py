@@ -258,7 +258,7 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
     # the linked issues None, so the PR isn't called unlinked, or closed for it.
     facts = PRFacts.from_pull(pull, paths)
     try:
-        facts.ci_ok = gh.ci_state(head, ignore={policy.review.check_name, QUEUE_JOB, *ctx.own_checks})
+        facts.ci = gh.ci_state(head, ignore={policy.review.check_name, QUEUE_JOB, *ctx.own_checks})
     except GitHubError as exc:
         problems.append(f"Couldn't read the CI status ({exc.status}).")
     try:

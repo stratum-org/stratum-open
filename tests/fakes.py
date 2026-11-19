@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from stratum_open.github.api import GitHubError
 from stratum_open.model import Reply
+from stratum_open.platform import CI
 
 _ids = itertools.count(1000)
 
@@ -28,7 +29,7 @@ class FakeModel:
 class FakeGitHub:
     def __init__(self, *, diff: str, repo: str = "acme/widget", number: int = 7, head: str = "a" * 40, author: str = "carol",
                  title: str = "Add a thing", body: str = "This adds a thing that the issue asked for, with tests.", files: dict | None = None,
-                 permissions: dict | None = None, ci: bool | None = True, linked: list[int] | None = None):
+                 permissions: dict | None = None, ci: CI = CI.PASSED, linked: list[int] | None = None):
         self.repo = repo
         self.diff = diff
         self.diffs: dict[int, str] = {}  # a PR's own diff, where it isn't `diff`

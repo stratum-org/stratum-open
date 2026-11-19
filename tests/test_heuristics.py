@@ -56,10 +56,11 @@ def test_secrets_and_sql_are_left_to_the_pattern_checks():
 
 
 def test_an_area_sends_the_pr_to_a_maintainer_not_back_to_its_author():
+    from stratum_open.platform import CI
     from stratum_open.triage import PRFacts, triage
 
     facts = PRFacts(number=1, title="Tidy a comment", body="Rewords a comment in the session code; no behaviour change.", author="dana",
-                    draft=False, additions=1, deletions=1, paths=["app/auth/session.py"], ci_ok=True, linked_issues=[9])
+                    draft=False, additions=1, deletions=1, paths=["app/auth/session.py"], ci=CI.PASSED, linked_issues=[9])
     files = parse_diff(diff("app/auth/session.py", ["# checks the token"], ["# check token"]))
     assert triage(facts, heuristics.check(files), parse_policy(None)).key == "needs_human"
     weakened = heuristics.check(parse_diff(diff("tests/test_users.py", ["pass"], ["assert a", "assert b"])))

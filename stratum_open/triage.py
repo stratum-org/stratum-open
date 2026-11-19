@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass, field
 
 from stratum_open.findings import Finding
+from stratum_open.platform import CI
 from stratum_open.policy import Policy
 from stratum_open.review import demention
 from stratum_open.track_record import AuthorRecord
@@ -33,6 +34,9 @@ _DOC_PATH = re.compile(r"(\.(md|rst|txt|adoc)$)|(^|/)docs?/|(^|/)(LICENSE|CHANGE
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _CHECKBOX = re.compile(r"^\s*[-*]\s*\[[ xX]\].*$", re.MULTILINE)
 MIN_DESCRIPTION_CHARS = 40
+# GitHub holds an outside contributor's `pull_request` workflows until a maintainer approves them
+# (first-time contributors by default; every outside collaborator, if the repo says so).
+HELD = "CI hasn't run: a maintainer needs to approve the workflows. Comment `/stratum review` once they've run to sort it again."
 
 
 @dataclass
@@ -45,7 +49,7 @@ class PRFacts:
     additions: int
     deletions: int
     paths: list[str]
-    ci_ok: bool | None = None  # None = pending or no CI
+    ci: CI | None = None  # None = not known: the lookup failed
     # None = the lookup failed, so it isn't known whether the PR links one: never read as "no linked issue".
     linked_issues: list[int] | None = field(default_factory=list)
 
@@ -104,7 +108,7 @@ def triage(
     needs_human = _needs_human_reasons(findings)
 
     needs_work = []
-    if facts.ci_ok is False:
+    if facts.ci == CI.FAILED:
         needs_work.append("CI is failing.")
     blocking = [f for f in findings if f.severity == "critical" or (f.source == "check" and f.blocking and not f.needs_human)]
     if blocking:
@@ -113,6 +117,11 @@ def triage(
         needs_work.append("No linked issue, and this project asks for one.")
     if matches_description == "no":
         needs_work.append("The code doesn't do what the description says" + (f": {mismatch}" if mismatch else "."))
+    # Untested code from outside is never ready. It's the author's first if there's something to
+    # fix, or the PR shows little effort; otherwise a maintainer has to let CI run.
+    held = facts.ci == CI.HELD
+    if held and needs_work:
+        needs_work.append(HELD)
 
     code_paths = [p for p in facts.paths if not is_doc(p) and not is_test(p)]
     tests_changed = any(is_test(p) for p in facts.paths)
@@ -130,7 +139,7 @@ def triage(
         low_effort.append(f"{struck[0]} of the author's last {struck[1]} merged PRs were later reverted or fixed.")
 
     evidence = []
-    if facts.ci_ok:
+    if facts.ci == CI.PASSED:
         evidence.append("CI passes.")
     if facts.linked_issues:
         evidence.append("Linked to " + ", ".join(f"#{n}" for n in facts.linked_issues[:3]) + ".")
@@ -142,11 +151,13 @@ def triage(
         evidence.append(f"None of the author's last {struck[1]} merged PRs needed a revert or fix.")
 
     if needs_human:
-        key, reasons = "needs_human", needs_human
+        key, reasons = "needs_human", ([HELD] if held and not needs_work else []) + needs_human
     elif needs_work:
         key, reasons = "needs_work", needs_work
     elif policy.triage.label_low_effort and len(low_effort) >= 3:
-        key, reasons = "low_effort", low_effort
+        key, reasons = "low_effort", low_effort + ([HELD] if held else [])
+    elif held:
+        key, reasons = "needs_human", [HELD]
     else:
         key, reasons = "ready", []
     return Triage(key, reasons, evidence, _score(facts, evidence, needs_work, low_effort))

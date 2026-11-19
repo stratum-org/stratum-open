@@ -103,6 +103,9 @@ def closed_prs(fake_github):
     fake_github.add_pull(8, diff=DIFF, state="closed", title="Résumé → ✓")
     fake_github.add_pull(9, diff=DIFF)
     fake_github.statuses[HEAD] = {"state": "failure", "statuses": [{"context": "docs", "state": "failure", "created_at": "2026-01-01T12:00:00Z"}]}
+    # A workflow still waiting for approval doesn't hide the failure.
+    fake_github.workflow_runs[HEAD] = [{"id": 1, "workflow_id": 1, "name": "tests", "event": "pull_request", "status": "completed",
+                                        "conclusion": "action_required", "created_at": "2026-01-01T11:00:00Z"}]
     # Passed while the PR was open; run again after it closed (2026-01-02), when it failed. The Action's own job isn't CI.
     fake_github.ci_runs[head_of(8)] = [run("12:00", "12:05", "success"), {**run("12:00", "12:05", "failure"), "started_at": "2026-01-05T12:00:00Z"},
                                        {**run("12:00", "12:05", "cancelled"), "name": "stratum", "check_suite": {"id": 2}},
@@ -117,14 +120,15 @@ def test_replay_reads_closed_prs_and_writes_nothing(fake_github, fake_model, tmp
     assert_no_traceback(result.stderr)
     data = json.loads(result.stdout)
     assert [(p["number"], p["outcome"], p["ci"], p["linked_issues"]) for p in data["pulls"]] == [
-        (8, "closed unmerged", True, []), (7, "merged", False, [3]),
+        (8, "closed unmerged", "passed", []), (7, "merged", "failed", [3]),
     ]
     assert data["pulls"][1]["findings"] == {"code/sql": 1} and "CI is failing." in data["pulls"][1]["reasons"]
     assert "| #7 Add a thing | merged | triage: needs work |" in report.read_text(encoding="utf-8")
     assert {r["method"] for r in fake_github.requests} == {"GET"}
     assert fake_github.posted_text() == "" and not fake_github.labels and not fake_github.closed
-    # The repo, its policy and the list; then a PR's diff, its two CI reads and, for Bandit, its Python file.
-    assert data["requests"] == len(fake_github.requests) == 3 + 2 * (3 + bandit.available())
+    # The repo, its policy and the list; then a PR's diff, its three CI reads and, for Bandit, its Python file.
+    # #7's CI had failed, so its workflow runs aren't read.
+    assert data["requests"] == len(fake_github.requests) == 3 + 2 * (4 + bandit.available()) - 1
     assert fake_github.token not in result.stdout + result.stderr
 
 

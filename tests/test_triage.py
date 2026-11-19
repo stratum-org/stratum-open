@@ -1,16 +1,17 @@
 from datetime import datetime, timezone
 
 from stratum_open.findings import Finding
+from stratum_open.platform import CI
 from stratum_open.policy import parse_policy
 from stratum_open.track_record import AuthorRecord, MergedPR, Strike
-from stratum_open.triage import PRFacts, description_length, is_doc, is_test, render_queue, triage
+from stratum_open.triage import HELD, PRFacts, description_length, is_doc, is_test, render_queue, triage
 
 POLICY = parse_policy(None)
 
 
 def facts(**overrides):
     base = dict(number=1, title="Fix parsing", body="Fixes the date parser when the input has no timezone; adds tests.", author="dana",
-                draft=False, additions=20, deletions=4, paths=["src/dates.py", "tests/test_dates.py"], ci_ok=True, linked_issues=[9])
+                draft=False, additions=20, deletions=4, paths=["src/dates.py", "tests/test_dates.py"], ci=CI.PASSED, linked_issues=[9])
     base.update(overrides)
     return PRFacts(**base)
 
@@ -24,13 +25,38 @@ def test_a_tested_linked_pr_with_green_ci_is_ready():
 def test_needs_human_beats_everything():
     finding = Finding("Workflow uses pull_request_target", "x", "high", "workflow", ".github/workflows/ci.yml", source="check",
                       rule="workflow/pull-request-target", needs_human=True)
-    result = triage(facts(ci_ok=False), [finding], POLICY)
+    result = triage(facts(ci=CI.FAILED), [finding], POLICY)
     assert result.key == "needs_human"
     assert result.reasons == ["Workflow uses pull_request_target (`.github/workflows/ci.yml`)."]
 
 
+def test_ci_held_for_approval_is_no_pass_and_goes_to_a_maintainer():
+    result = triage(facts(ci=CI.HELD), [], POLICY, matches_description="yes")
+    assert result.key == "needs_human" and "CI passes." not in result.evidence
+    assert result.reasons == [HELD]
+    finding = Finding("Workflow uses pull_request_target", "x", "high", "workflow", ".github/workflows/ci.yml", source="check",
+                      rule="workflow/pull-request-target", needs_human=True)
+    assert triage(facts(ci=CI.HELD), [finding], POLICY).reasons[1:] == ["Workflow uses pull_request_target (`.github/workflows/ci.yml`)."]
+    # Something for the author to fix comes first; the held CI is one more reason, never a pass.
+    secret = Finding("Secret in code", "x", "critical", "security", "a.py", 3, source="check", rule="code/secret")
+    work = triage(facts(ci=CI.HELD), [secret], POLICY)
+    assert work.key == "needs_work" and "CI passes." not in work.evidence
+    assert work.reasons == ["1 serious finding to fix: Secret in code.",
+                            HELD]
+    # Little effort shown still reads as low effort; held CI is one more reason, never a pass.
+    bare = facts(ci=CI.HELD, body="", linked_issues=[], paths=["src/dates.py"])
+    assert triage(facts(ci=CI.PASSED, body="", linked_issues=[], paths=["src/dates.py"]), [], POLICY).key == "low_effort"
+    low = triage(bare, [], POLICY)
+    assert low.key == "low_effort" and low.reasons == ["The description is empty or only a few words.", "No linked issue.",
+                                                       "Code changed with no test changes.", HELD]
+    off = parse_policy("triage:\n  label_low_effort: false\n")
+    assert (triage(bare, [], off).key, triage(bare, [], off).reasons) == ("needs_human", [HELD])
+    for state in (CI.PENDING, CI.NONE, None):
+        assert triage(facts(ci=state), [], POLICY).key == "ready" and "CI passes." not in triage(facts(ci=state), [], POLICY).evidence
+
+
 def test_needs_work_for_failing_ci_serious_findings_or_a_mismatch():
-    assert triage(facts(ci_ok=False), [], POLICY).reasons == ["CI is failing."]
+    assert triage(facts(ci=CI.FAILED), [], POLICY).reasons == ["CI is failing."]
     secret = Finding("Secret in code", "x", "critical", "security", "a.py", 3, source="check", rule="code/secret")
     assert triage(facts(), [secret], POLICY).key == "needs_work"
     model_high = Finding("Maybe a bug", "x", "high", "bug", "a.py", 3)

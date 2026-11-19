@@ -16,6 +16,7 @@ import pytest
 from stratum_open.github import publish
 from stratum_open.gitlab import ci
 from stratum_open.gitlab.api import GitLab, GitLabError
+from stratum_open.platform import CI
 
 from conftest import DIFF, SQL_LINE
 from fake_gitlab import FakeGitLabServer
@@ -367,11 +368,11 @@ def test_ci_state_ignores_stratums_own_job_and_allowed_failures(gl):
     ref = "refs/merge-requests/7/head"
     gl.statuses[HEAD] = [{"name": "stratum", "status": "running", "ref": ref}, {"name": "lint", "status": "failed", "allow_failure": True, "ref": ref},
                          {"name": "tests", "status": "success", "ref": ref}]
-    assert api.ci_state(HEAD, ignore={"stratum", "Stratum"}) is True
+    assert api.ci_state(HEAD, ignore={"stratum", "Stratum"}) == CI.PASSED
     gl.statuses[HEAD].append({"name": "build", "status": "failed", "ref": ref})
-    assert api.ci_state(HEAD, ignore={"stratum"}) is False
+    assert api.ci_state(HEAD, ignore={"stratum"}) == CI.FAILED
     gl.statuses[HEAD][-1]["status"] = "pending"
-    assert api.ci_state(HEAD, ignore={"stratum"}) is None
+    assert api.ci_state(HEAD, ignore={"stratum"}) == CI.PENDING
     assert all(r["query"]["ref"] == [ref] for r in gl.requests_to("GET", r"/statuses$"))
 
 

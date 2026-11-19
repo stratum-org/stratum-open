@@ -41,6 +41,23 @@ def test_prs_with_no_ci_tests_or_issue_are_sorted_and_explained(fake_github, mak
     assert_contract(fake_github, number=7, head=HEAD, logs=logs)
 
 
+def test_ci_waiting_for_approval_is_not_a_pass(fake_github, make_context, fake_model, logs):
+    # A first-time contributor's PR from a fork: GitHub holds `tests` for approval, so it made no check runs; the CLA check ran.
+    clean = DIFF.replace(f"+    {SQL_LINE}", '+    cur = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))')
+    fake_github.add_pull(7, diff=clean, fork=True, linked_issues=[3])
+    fake_github.ci_runs[HEAD] = [{"name": "cla", "status": "completed", "conclusion": "success"}]
+    fake_github.workflow_runs[HEAD] = [{"id": 1, "workflow_id": 1, "name": "tests", "event": "pull_request", "status": "completed",
+                                        "conclusion": "action_required", "created_at": "2026-01-01T12:00:00Z"}]
+    fake_model.queue(Response.ok(json_reply([])))
+    outcome = review_pull(make_context(policy_text=ON), 7)
+    assert outcome.triage.key == "needs_human" and "CI passes." not in outcome.triage.evidence
+    assert "CI hasn't run: a maintainer needs to approve the workflows. Comment `/stratum review` once they've run to sort it again." in outcome.triage.reasons
+    assert fake_github.labels_on(7) == ["triage: needs a maintainer"]
+    asked = fake_github.requests_to("GET", r"/actions/runs$")
+    assert [(r["query"]["head_sha"], r["query"]["event"]) for r in asked] == [(HEAD, "pull_request")]
+    assert_contract(fake_github, number=7, head=HEAD, logs=logs)
+
+
 def test_label_exists_with_a_different_colour_and_is_not_recreated(fake_github, make_context, logs):
     fake_github.labels["triage: needs work"] = {"name": "triage: needs work", "color": "ffffff", "description": "ours"}
     fake_github.add_pull(7, diff=DIFF)

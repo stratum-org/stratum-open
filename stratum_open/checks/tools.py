@@ -14,7 +14,7 @@ to run in rustc's place. `go vet` runs cgo, which runs the C compiler, and
 downloads the modules `go.mod` names. A PR's code mustn't run where a token
 that can write to the repository can be reached, so a caller hands over a
 worktree it mustn't build as `refused`, with the reason, and these checks
-then don't run. The runner refuses a PR from a fork (`runner.worktree_for`).
+then don't run. The runner refuses a PR from a fork or a bot (`runner.worktree_for`).
 
 A tool that isn't installed, a worktree that's missing or refused, a build
 that fails and a run that takes too long all end the same way: no findings
@@ -147,6 +147,22 @@ def unavailable(name: str, worktree: Worktree | None) -> str | None:
     return None
 
 
+# The environment a build never gets: Stratum's own settings (its GitHub token, the model's key), the job's
+# token, the runner's own channels to GitHub, and the Action's inputs. A build script that dumps its
+# environment then finds none of them. Code running as the same user can still read the parent's, so
+# this narrows what leaks; refusing to build code that isn't trusted (runner.worktree_for) is the gate.
+_SECRET_PREFIXES = ("STRATUM_", "ACTIONS_", "INPUT_")
+_SECRET_NAMES = frozenset({"GITHUB_TOKEN", "GH_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"})
+
+
+def build_env(environ: dict[str, str] | None = None) -> dict[str, str]:
+    """A copy of the environment for a tool that builds the PR's code,
+    without the variables that hold this job's tokens and keys."""
+    source = os.environ if environ is None else environ
+    return {key: value for key, value in source.items()
+            if not key.upper().startswith(_SECRET_PREFIXES) and key.upper() not in _SECRET_NAMES}
+
+
 def run(command: list[str], *, cwd: str, timeout: float, name: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     """Run a tool with a time limit. Raises Skipped when it doesn't finish,
     after stopping it and every process it started (the compiler, a build
@@ -216,6 +232,12 @@ def first_line(text: str) -> str:
 
 def listed(paths: list[str]) -> str:
     return ", ".join(f"`{p}`" for p in paths[:MAX_LISTED]) + (f" and {len(paths) - MAX_LISTED} more" if len(paths) > MAX_LISTED else "")
+
+
+def code_span(text: str) -> str:
+    """Text a tool printed, inside a code span, so a mention or a link the
+    PR's code put in it (a `compile_error!`) stays text."""
+    return "`" + text.replace("`", "'").replace("\n", " ").strip()[:200] + "`"
 
 
 def title(tool: str, code: str, message: str) -> str:

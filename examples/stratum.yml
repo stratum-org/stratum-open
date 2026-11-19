@@ -3,7 +3,9 @@
 # It runs on pull_request_target so it can comment on PRs from forks. That's
 # safe here because the workflow checks out your default branch, never the
 # PR, and Stratum reads the PR only through the API: no code from the PR runs.
-# Don't add a step that checks out or runs the PR's code.
+# Don't add a step that checks out or runs the PR's code, unless you opt in to
+# the checks that build it (checks.go_vet, checks.clippy): the README says how,
+# for PRs from your own branches and not from bots.
 name: Stratum
 
 on:

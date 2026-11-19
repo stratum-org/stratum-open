@@ -28,8 +28,8 @@ inputs:
   head-checkout:
     description: >-
       A folder where the workflow checked out the PR's head, for checks.go_vet and checks.clippy, which build the code
-      and so run it. Leave empty (the default) and they don't run. Stratum refuses to build a PR from a fork, whatever
-      this says; see the README before setting it.
+      and so run it. Leave empty (the default) and they don't run. Stratum refuses to build a PR from a fork, or one a
+      bot opened (unless checks.build_bot_prs), whatever this says; see the README before setting it.
     default: ""
 
 runs:

@@ -86,7 +86,7 @@ def fake_run(monkeypatch, *results, seen=None):
 
     def run(command, *, cwd, timeout, name, env=None):
         if seen is not None:
-            seen.append({"command": command, "cwd": cwd, "timeout": timeout})
+            seen.append({"command": command, "cwd": cwd, "timeout": timeout, "env": env})
         code, stdout, stderr = answers.pop(0)
         return subprocess.CompletedProcess(command, code, stdout=stdout, stderr=stderr)
 
@@ -182,7 +182,7 @@ def test_a_package_that_doesnt_build_is_a_coverage_line_not_a_finding(monkeypatc
     fake_run(monkeypatch, (1, "", "# example.com/m\nvet: a.go:7:2: undefined: Printz\n"))
     notes = []
     assert go_vet.check(parse_diff(new_file("a.go", GO_FILE)), Worktree(str(root)), notes) == []
-    assert notes == ["go vet couldn't build every package of the module (vet: a.go:7:2: undefined: Printz), so its findings there are missing."]
+    assert notes == ["go vet couldn't build every package of the module (`vet: a.go:7:2: undefined: Printz`), so its findings there are missing."]
 
 
 def test_go_vet_needs_a_worktree_it_may_build(monkeypatch, tmp_path):
@@ -284,12 +284,12 @@ def test_a_crate_that_doesnt_build_is_a_coverage_line_not_a_finding(monkeypatch,
                            "error: could not compile `c` (lib) due to 1 previous error\n"))
     notes = []
     assert clippy.check(parse_diff(new_file("src/lib.rs", RUST_FILE)), Worktree(str(root)), notes) == []
-    assert notes == ["Clippy couldn't build the crate (cannot find value `x` in this scope), so its findings there are missing."]
+    assert notes == ["Clippy couldn't build the crate (`cannot find value 'x' in this scope`), so its findings there are missing."]
     # No clippy component, or a lock file that's out of date: cargo says so on stderr.
     fake_run(monkeypatch, (101, "", "error: no such command: `clippy`\n"))
     notes = []
     assert clippy.check(parse_diff(new_file("src/lib.rs", RUST_FILE)), Worktree(str(root)), notes) == []
-    assert notes == ["Clippy couldn't build the crate (error: no such command: `clippy`), so its findings there are missing."]
+    assert notes == ["Clippy couldn't build the crate (`error: no such command: 'clippy'`), so its findings there are missing."]
 
 
 def test_without_cargo_or_in_time_clippy_says_so(monkeypatch, tmp_path):
@@ -366,8 +366,110 @@ def test_a_pr_from_a_fork_is_never_built(tmp_path):
 def test_a_checkout_that_isnt_at_the_prs_head_is_refused(tmp_path):
     committed(go_module(tmp_path))
     gh = FakeGitHub(diff=new_file("a.go", GO_FILE), head="b" * 40)
+    gh.pull(7)["head"]["repo"] = {"full_name": "acme/widget"}
     ctx = Context(gh=gh, policy=GO, model=None, bot="stratum[bot]", head_checkout=str(tmp_path))
     assert "not at its head bbbbbbb" in worktree_for(ctx, gh.pull(7)).refused
+
+
+def test_only_a_branch_positively_in_this_repo_is_built(tmp_path):
+    head = committed(go_module(tmp_path))
+    gh = FakeGitHub(diff=new_file("a.go", GO_FILE), head=head)
+    ctx = Context(gh=gh, policy=GO, model=None, bot="stratum[bot]", head_checkout=str(tmp_path))
+    pull = gh.pull(7)
+    pull["head"].pop("repo", None)  # a pull without the field fails closed
+    assert worktree_for(ctx, pull).refused.startswith("the PR comes from a fork")
+    pull["head"]["repo"] = {}
+    assert worktree_for(ctx, pull).refused.startswith("the PR comes from a fork")
+    pull["head"]["repo"] = {"full_name": "ACME/Widget"}
+    assert worktree_for(ctx, pull) == Worktree(str(tmp_path))
+    # The refusal, posted on the PR, doesn't send anyone off to build it elsewhere.
+    pull["head"]["repo"] = {"full_name": "mallory/widget"}
+    assert "--local" not in worktree_for(ctx, pull).refused
+
+
+def test_a_bots_pr_is_built_only_when_the_policy_allows_it(tmp_path):
+    head = committed(go_module(tmp_path))
+    gh = FakeGitHub(diff=new_file("a.go", GO_FILE), head=head, author="dependabot[bot]")
+    pull = gh.pull(7)
+    pull["head"]["repo"] = {"full_name": "acme/widget"}
+    ctx = Context(gh=gh, policy=GO, model=None, bot="stratum[bot]", head_checkout=str(tmp_path))
+    assert "the PR is by a bot (dependabot[bot])" in worktree_for(ctx, pull).refused
+    pull["user"] = {"login": "renovate", "type": "Bot"}
+    assert "the PR is by a bot (renovate)" in worktree_for(ctx, pull).refused
+    allowed = parse_policy("checks:\n  go_vet: true\n  build_bot_prs: true\n")
+    assert Policy().checks.build_bot_prs is False and allowed.checks.build_bot_prs is True
+    ctx = Context(gh=gh, policy=allowed, model=None, bot="stratum[bot]", head_checkout=str(tmp_path))
+    assert worktree_for(ctx, pull) == Worktree(str(tmp_path))
+
+
+def test_the_early_post_refuses_a_fork_too(monkeypatch, tmp_path):
+    from test_early_checks import GitHub as EarlyGitHub
+
+    from stratum_open.runner import post_early
+
+    monkeypatch.setattr("stratum_open.checks.bandit.available", lambda: False)
+    installed(monkeypatch, "go")
+    fake_run(monkeypatch)  # nothing may be built
+    head = committed(go_module(tmp_path))
+    gh = EarlyGitHub(diff=new_file("a.go", GO_FILE), head=head)
+    gh.pull(7)["head"]["repo"] = {"full_name": "mallory/widget"}
+    policy = parse_policy("review:\n  early_checks: true\nchecks:\n  go_vet: true\n")
+    post_early(Context(gh=gh, policy=policy, model=None, bot="stratum[bot]", head_checkout=str(tmp_path), log=lambda line: None), 7)
+    assert "go vet didn't run: the PR comes from a fork" in gh.issue_comments_[7][-1]["body"]
+
+
+def test_a_build_never_gets_the_jobs_tokens(monkeypatch, tmp_path):
+    for key, value in {"STRATUM_GITHUB_TOKEN": "s1", "STRATUM_MODEL_API_KEY": "s2", "GITHUB_TOKEN": "s3", "GH_TOKEN": "s4",
+                       "ACTIONS_RUNTIME_TOKEN": "s5", "INPUT_GITHUB-TOKEN": "s6", "GOPATH": "/go", "HOME": "/home/x"}.items():
+        monkeypatch.setenv(key, value)
+    env = tools.build_env()
+    assert not {"s1", "s2", "s3", "s4", "s5", "s6"} & set(env.values())
+    assert env["GOPATH"] == "/go" and env["HOME"] == "/home/x"
+    seen = []
+    installed(monkeypatch, "go", "staticcheck", "cargo")
+    fake_run(monkeypatch, (0, "", ""), (0, "", ""), (0, "", ""), seen=seen)
+    go_vet.check(parse_diff(new_file("a.go", GO_FILE)), Worktree(str(go_module(tmp_path / "g"))), [])
+    clippy.check(parse_diff(new_file("src/lib.rs", RUST_FILE)), Worktree(str(rust_crate(tmp_path / "r"))), [])
+    assert len(seen) == 3 and all(s["env"] is not None and "s1" not in s["env"].values() and "GOPATH" in s["env"] for s in seen)
+
+
+def test_failure_reasons_from_the_tools_stay_inside_a_code_span(monkeypatch, tmp_path):
+    installed(monkeypatch, "cargo")
+    root = rust_crate(tmp_path / "r")
+    fake_run(monkeypatch, (101, clippy_message("src/lib.rs", 1, None, "@acme/team see [x](https://e.example) `now`", level="error"), ""))
+    notes = []
+    clippy.check(parse_diff(new_file("src/lib.rs", RUST_FILE)), Worktree(str(root)), notes)
+    assert notes == ["Clippy couldn't build the crate (`@acme/team see [x](https://e.example) 'now'`), so its findings there are missing."]
+    installed(monkeypatch, "go")
+    fake_run(monkeypatch, (1, "", "vet: a.go:1:1: @acme/team [x](https://e.example)\n"))
+    notes = []
+    go_vet.check(parse_diff(new_file("a.go", GO_FILE)), Worktree(str(go_module(tmp_path / "g"))), notes)
+    assert "(`vet: a.go:1:1: @acme/team [x](https://e.example)`)" in notes[0]
+
+
+def test_staticcheck_that_doesnt_run_says_so(monkeypatch, tmp_path):
+    installed(monkeypatch, "go", "staticcheck")
+    root = go_module(tmp_path)
+    files = parse_diff(new_file("a.go", GO_FILE))
+    for code, stdout, stderr in ((2, "", ""), (1, "", "staticcheck: module requires at least go1.27\n")):
+        fake_run(monkeypatch, (0, "", ""), (code, stdout, stderr))
+        notes = []
+        go_vet.check(files, Worktree(str(root)), notes)
+        assert len(notes) == 1 and notes[0].startswith("staticcheck didn't run on the module (") and notes[0].endswith("so its findings are missing.")
+    assert "`staticcheck: module requires at least go1.27`" in notes[0]
+    fake_run(monkeypatch, (0, "", ""), (0, "", ""))  # ran and found nothing
+    notes = []
+    go_vet.check(files, Worktree(str(root)), notes)
+    assert notes == []
+
+
+def test_vendored_code_is_left_alone():
+    def one(path):
+        return parse_diff(new_file(path, "x\n"))[0]
+
+    assert not go_vet.wanted(one("vendor/github.com/x/y/y.go")) and not go_vet.wanted(one("svc/vendor/golang.org/x/z.go"))
+    assert not clippy.wanted(one("vendor/serde/src/lib.rs"))
+    assert go_vet.wanted(one("pkg/vendors/v.go")) and go_vet.wanted(one("vendor.go")) and clippy.wanted(one("src/vendor.rs"))
 
 
 def test_no_checkout_or_no_check_that_builds_means_no_worktree(tmp_path):
@@ -406,11 +508,12 @@ def test_a_pr_from_this_repo_is_built_and_reported(monkeypatch, tmp_path):
     assert "go-vet/printf" in {f.rule for f in outcome.findings}
 
 
-def test_review_local_refuses_a_checkout_with_uncommitted_changes(tmp_path):
+def test_review_local_refuses_a_checkout_with_uncommitted_changes(tmp_path, capsys):
     root = write(go_module(tmp_path), {"b.go": "package m\n\nvar value = 1\n"})
     committed(root)
     files = parse_diff(new_file("a.go", GO_FILE))
     assert cli._local_worktree(GO, files, str(root)) == Worktree(str(root))
+    assert "Building this checkout for go vet, which runs its code" in capsys.readouterr().err
     assert cli._local_worktree(Policy(), files, str(root)) is None
     # A file the PR doesn't change still goes into the build, so its change counts too.
     (root / "b.go").write_text('package m\n\nvar value = "one"\n', encoding="utf-8")
@@ -418,6 +521,7 @@ def test_review_local_refuses_a_checkout_with_uncommitted_changes(tmp_path):
     git(root, "checkout", "--", "b.go")
     (root / "c.go").write_text("package m\n", encoding="utf-8")  # one git doesn't know of yet
     assert "`c.go` has changes that aren't committed" in cli._local_worktree(GO, files, str(root)).refused
+    assert capsys.readouterr().err == ""  # nothing built, so no warning
 
 
 def test_a_tool_past_its_time_limit_is_stopped_with_what_it_started(tmp_path):
@@ -468,4 +572,4 @@ def test_real_clippy_on_code_that_doesnt_build(tmp_path):
     root = rust_crate(tmp_path, text=text)
     notes = []
     assert clippy.check(parse_diff(new_file("src/lib.rs", text)), Worktree(str(root)), notes) == []
-    assert len(notes) == 1 and notes[0].startswith("Clippy couldn't build the crate (cannot find value `missing`")
+    assert len(notes) == 1 and notes[0].startswith("Clippy couldn't build the crate (`cannot find value 'missing'")

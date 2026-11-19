@@ -84,6 +84,7 @@ class Checks:
     # `review --local`, or the Action's `head-checkout`, which is refused for a PR from a fork.
     go_vet: bool = False  # go vet's findings (and staticcheck's SA checks, if it's installed) on added lines of Go code; needs `go` on PATH
     clippy: bool = False  # Clippy's correctness lints on added lines of Rust code; needs `cargo` with the clippy component
+    build_bot_prs: bool = False  # let those two build a PR a bot opened (Dependabot, Renovate), which runs the releases it brings in
 
 
 @dataclass(frozen=True)

@@ -63,7 +63,9 @@ def available() -> bool:
 
 
 def wanted(file: FileDiff) -> bool:
-    return extension(file.path) == ".rs" and not is_test_path(file.path)
+    """Rust code outside the tests and outside `vendor/`, where `cargo
+    vendor` puts other projects' crates, each with its own `Cargo.toml`."""
+    return extension(file.path) == ".rs" and not is_test_path(file.path) and "vendor" not in file.path.split("/")[:-1]
 
 
 def check(files: list[FileDiff], worktree: tools.Worktree | None, notes: list[str]) -> list[Finding]:
@@ -86,7 +88,7 @@ def run_crate(worktree: str, root: str, paths: list[str], seconds: float) -> tup
     command = [program, "clippy", "--manifest-path", os.path.join(folder, "Cargo.toml"), "--message-format=json", "--quiet",
                *(["--locked"] if locked else []), "--", *LINT_FLAGS]
     try:
-        result = tools.run(command, cwd=folder, timeout=seconds, name="Clippy")
+        result = tools.run(command, cwd=folder, timeout=seconds, name="Clippy", env=tools.build_env())
     finally:
         for unlocked in set(above) - locked:  # a Cargo.lock this run wrote
             try:
@@ -129,6 +131,7 @@ def run_crate(worktree: str, root: str, paths: list[str], seconds: float) -> tup
     problem = ""
     if error or result.returncode != 0:
         where = f"the crate in `{root}`" if root else "the crate"
-        reason = tools.first_line(error) or tools.first_line(result.stderr) or f"exit code {result.returncode}"
+        first = tools.first_line(error) or tools.first_line(result.stderr)
+        reason = tools.code_span(first) if first else f"exit code {result.returncode}"
         problem = f"Clippy couldn't build {where} ({reason}), so its findings there are missing."
     return issues, problem

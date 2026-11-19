@@ -248,8 +248,9 @@ def _review_local(args, base: str) -> int:
 
 def _local_worktree(policy: Policy, files: list, top: str):
     """This checkout, for the checks that build the code (`checks.go_vet`,
-    `checks.clippy`): the code is the user's own, and builds here as it would
-    with `go build` or `cargo build`. It's refused when the checkout has
+    `checks.clippy`). It builds here as `go build` or `cargo build` would,
+    running the code, so a line on stderr says so first: a branch checked out
+    from someone's PR is their code. It's refused when the checkout has
     changes that aren't committed, files git doesn't know of included: the
     review reads HEAD, and a build reads more than the changed files (their
     package, the manifests, the dependencies)."""
@@ -265,6 +266,9 @@ def _local_worktree(policy: Policy, files: list, top: str):
     if status is None or dirty:
         return Worktree(top, f"{listed(dirty)} {'has' if len(dirty) == 1 else 'have'} changes that aren't committed, and the review "
                              "reads HEAD. Commit or stash them, and run it again.")
+    # Said before anything is built: a branch checked out from someone else's PR is their code, and it runs here.
+    print(f"Building this checkout for {' and '.join(n for n, on in (('go vet', policy.checks.go_vet), ('Clippy', policy.checks.clippy)) if on)}, "
+          "which runs its code (build scripts, macros, cgo): don't do this on a checkout of a PR you don't trust.", file=sys.stderr)
     return Worktree(top)
 
 

@@ -35,7 +35,7 @@ That workflow runs `gpt-oss:20b` with Ollama on GitHub's own runner, so you need
 
 To hear from Stratum sooner, set `review.early_checks: true` in your policy file. The Action then runs the checks before it starts the model and posts what they found straight away: on the lines, in the summary comment (with a line saying the model's review is still running), and as a check run in progress. That's usually within a minute of the job starting, since the checks need no model. When the model is done, the same comment becomes the full review and the check run gets its result. The end result is the same as without the setting. A check's early comment that the full review wouldn't have posted is deleted then: when the model reported the same problem on the same lines, or when `review.max_inline_comments` gives its place to a more serious finding. One that someone has replied to stays. If the model's review never finishes (Ollama doesn't start, or the job fails, times out or is cancelled), the summary says so, and the check run is completed with what the checks found.
 
-The workflow uses `pull_request_target` so it can comment on PRs from forks. It's safe here because the workflow checks out your default branch, never the PR, and Stratum reads the PR only through GitHub's API: no code from the PR ever runs. Keep it that way: don't add a step that checks out the PR.
+The workflow uses `pull_request_target` so it can comment on PRs from forks. It's safe here because the workflow checks out your default branch, never the PR, and Stratum reads the PR only through GitHub's API: no code from the PR ever runs. Keep it that way: don't add a step that checks out the PR, unless you opt in to the [checks that build it](#go-vet-and-clippy-checks-that-build-the-pr), whose setup refuses forks and bots.
 
 ### actionlint on the runner
 
@@ -56,8 +56,8 @@ The workflow uses `pull_request_target` so it can comment on PRs from forks. It'
 `checks.go_vet` and `checks.clippy` (both off by default) compile the PR's code, so they need a checkout of the PR on disk, and **compiling code runs it**: `cargo clippy` runs build scripts and procedural macros, and obeys a `.cargo/config.toml` that names a program to run in rustc's place; `go vet` runs cgo, and so the C compiler, and downloads the modules `go.mod` names. In a `pull_request_target` workflow that would hand a fork's code a token that can write to your repository.
 
 So they're safe by default:
-- With `stratum-open review --local` they run on your own checkout. They need a clean checkout: if any change isn't committed, new files included, they don't run, since the review reads HEAD and a build reads more than the changed files.
-- The Action never checks out the PR, so they don't run there, and the summary says so, unless the workflow checks the PR out in a folder of its own and passes it as `head-checkout`. Even then, Stratum refuses to build a PR whose branch is in a fork, and one whose checkout isn't at the PR's head. A PR from a branch of your own repository was pushed by someone who can already run code in its workflows. Its build still runs the code of the dependencies it names, so a bot's PR that bumps one (Dependabot, Renovate) runs that release's build scripts too; leave `head-checkout` empty for those if that's a risk you don't take in CI either.
+- With `stratum-open review --local` they run on your checkout, and say on stderr that they're about to build it, since that runs its code: don't run it on a branch checked out from a PR you don't trust. They need a clean checkout: if any change isn't committed, new files included, they don't run, since the review reads HEAD and a build reads more than the changed files.
+- The Action never checks out the PR, so they don't run there, and the summary says so, unless the workflow checks the PR out in a folder of its own and passes it as `head-checkout`. Even then, Stratum doesn't build a PR whose branch isn't in your repository (one from a fork), a PR a bot opened, or a checkout that isn't at the PR's head. A PR from a branch of your own repository was pushed by someone who can already run code in its workflows. A bot's PR (Dependabot, Renovate) is different: it brings in a new release of a dependency, and building it runs that release's build scripts. Your CI runs those PRs under `pull_request`, with a read-only token and no secrets, while Stratum's job holds a token that can write and the model's key. So bots' PRs aren't built unless your policy sets `checks.build_bot_prs: true`. Whatever runs, a build never gets Stratum's own variables (`STRATUM_*`, so its token and the model's key), `GITHUB_TOKEN`, `ACTIONS_*` or `INPUT_*` in its environment, though code running as the job's user can still find them elsewhere.
 - The GitHub App has no checkout, so they never run there.
 
 A build that fails, a run past its time limit (5 minutes for go vet, 10 for Clippy) and a missing tool are each a line in the review's coverage, never a finding. A run past its limit is stopped along with everything it started. To opt in, for PRs from your own branches only:
@@ -65,14 +65,14 @@ A build that fails, a run past its time limit (5 minutes for go vet, 10 for Clip
 ```yaml
       # Next to the example workflow's checkout of the default branch, which stays as it is.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: github.event.pull_request.head.repo.full_name == github.repository
+        if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.type != 'Bot'
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           path: pr-head
           persist-credentials: false
       - uses: stratum-org/stratum-open@main  # `head-checkout` comes after 0.3.0
         with:
-          head-checkout: ${{ github.event.pull_request.head.repo.full_name == github.repository && 'pr-head' || '' }}
+          head-checkout: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.type != 'Bot' && 'pr-head' || '' }}
 ```
 
 GitHub's Ubuntu runners come with Go, and with Rust and Clippy. If your `go.mod` or `rust-toolchain.toml` asks for a newer version, Go or rustup downloads it, which counts towards the time limit. `staticcheck` you install yourself (`go install honnef.co/go/tools/cmd/staticcheck@latest`); once it's on PATH, go vet adds its SA checks.

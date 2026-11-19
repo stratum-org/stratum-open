@@ -81,6 +81,8 @@ checks:
                                #   copied lock), and staticcheck's SA checks if it's installed, on lines a PR adds to Go code; needs `go`
   clippy: false                # true reports Clippy's correctness lints (`a == a`, an index past the end) on lines a PR adds to
                                #   Rust code; needs `cargo` with the clippy component
+  build_bot_prs: false         # true lets go_vet and clippy build a PR a bot opened (Dependabot, Renovate). Its build runs the
+                               #   build scripts of the releases it brings in, with Stratum's token; CI runs them read-only
 
 commands:                      # who may run each /stratum command: anyone | author | write
   review: write                # "author" is the PR's author or anyone with write access

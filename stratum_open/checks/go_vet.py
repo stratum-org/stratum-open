@@ -91,7 +91,9 @@ def available() -> bool:
 
 
 def wanted(file: FileDiff) -> bool:
-    return extension(file.path) == ".go" and not is_test_path(file.path)
+    """Go code outside the tests and outside `vendor/`, which is other
+    projects' code, copied in."""
+    return extension(file.path) == ".go" and not is_test_path(file.path) and "vendor" not in file.path.split("/")[:-1]
 
 
 def check(files: list[FileDiff], worktree: tools.Worktree | None, notes: list[str]) -> list[Finding]:
@@ -120,7 +122,7 @@ def vet(worktree: str, folder: str, packages: list[str], seconds: float) -> tupl
     program = find_program("go")
     if program is None:
         return [], "go vet didn't run: `go` isn't on PATH any more."
-    result = tools.run([program, "vet", "-json", *packages], cwd=folder, timeout=seconds, name="go vet")
+    result = tools.run([program, "vet", "-json", *packages], cwd=folder, timeout=seconds, name="go vet", env=tools.build_env())
     # -json writes to stdout from Go 1.24 or so, to stderr before; both are read.
     reports = _json_objects(result.stdout) + _json_objects(result.stderr)
     issues = []
@@ -139,7 +141,8 @@ def vet(worktree: str, folder: str, packages: list[str], seconds: float) -> tupl
     if result.returncode != 0:
         # What isn't the JSON report, which went to stderr too before Go 1.24 or so.
         errors = "\n".join(line for line in result.stderr.splitlines() if not line.lstrip().startswith(("{", "}", '"', "]", "[")))
-        problem = (f"go vet couldn't build every package of {_module(worktree, folder)} ({tools.first_line(errors) or f'exit code {result.returncode}'}), "
+        problem = (f"go vet couldn't build every package of {_module(worktree, folder)} "
+                   f"({tools.code_span(tools.first_line(errors)) if tools.first_line(errors) else f'exit code {result.returncode}'}), "
                    "so its findings there are missing.")
     return issues, problem
 
@@ -150,7 +153,7 @@ def staticcheck(worktree: str, folder: str, packages: list[str], seconds: float)
         return [], ""
     checks = ",".join(["SA*", *(f"-{code}" for code in DROPPED_SA)])
     result = tools.run([program, "-f", "json", "-checks", checks, "-tests=false", "-show-ignored", *packages],
-                       cwd=folder, timeout=seconds, name="staticcheck")
+                       cwd=folder, timeout=seconds, name="staticcheck", env=tools.build_env())
     issues, compile_error = [], ""
     for line in result.stdout.splitlines():
         try:
@@ -178,7 +181,17 @@ def staticcheck(worktree: str, folder: str, packages: list[str], seconds: float)
             rule=f"staticcheck/{code}", title=tools.title("staticcheck", code, message), detail=detail, severity="medium",
             suggestion=f"See https://staticcheck.dev/docs/checks/#{code} for what it means and how to fix it.",
         ))
-    problem = f"staticcheck couldn't build every package of {_module(worktree, folder)} ({tools.first_line(compile_error)}), so its findings there are missing." if compile_error else ""
+    if compile_error:
+        problem = (f"staticcheck couldn't build every package of {_module(worktree, folder)} "
+                   f"({tools.code_span(tools.first_line(compile_error))}), so its findings there are missing.")
+    elif result.returncode > 1 or (not issues and not result.stdout.strip() and result.stderr.strip()):
+        # 1 is staticcheck finding something; past that, or nothing on stdout and an error on stderr (built with
+        # an older Go than go.mod asks for, say), it didn't run.
+        reason = tools.first_line(result.stderr)
+        problem = (f"staticcheck didn't run on {_module(worktree, folder)} ({tools.code_span(reason) if reason else f'exit code {result.returncode}'}), "
+                   "so its findings are missing.")
+    else:
+        problem = ""
     return issues, problem
 
 

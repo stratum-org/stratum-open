@@ -6,8 +6,8 @@ That's what makes `pull_request_target` safe here: no code from the PR runs.
 
 The one exception is opt-in: `checks.go_vet` and `checks.clippy` build the
 PR's code, and run only when the workflow also checks the PR out somewhere
-else and passes that folder as `head-checkout` (STRATUM_HEAD_CHECKOUT). For a
-PR from a fork, Stratum refuses to build it (`runner.worktree_for`).
+else and passes that folder as `head-checkout` (STRATUM_HEAD_CHECKOUT). A PR
+from a fork, or one a bot opened, isn't built (`runner.worktree_for`).
 """
 
 from __future__ import annotations

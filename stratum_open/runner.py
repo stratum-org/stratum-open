@@ -121,17 +121,29 @@ def from_fork(pull: dict, repo: str) -> bool:
 def worktree_for(ctx: Context, pull: dict) -> Worktree | None:
     """The PR's head on disk for the checks that build its code, when the
     caller has a checkout of it (`ctx.head_checkout`) and the policy turns
-    one of them on. It's refused, with the reason, for a PR from a fork:
-    building the code runs it (build scripts, macros, cgo), and the job holds
-    a token that can write to this repository. Someone who can push a branch
-    here can already run code in its workflows, so a PR from one is built.
-    It's refused too when the checkout isn't at the PR's head, since the
-    lines the tools report wouldn't be the ones the diff adds."""
+    one of them on. Building the code runs it (build scripts, macros, cgo),
+    and the job holds a token that can write to this repository, so it's
+    refused, with the reason:
+    - unless the PR's branch is positively in this repository: a fork, a
+      deleted fork, or a pull without that field never is;
+    - for a PR a bot opened (Dependabot, Renovate), unless
+      `checks.build_bot_prs` is on: its code is a dependency's release, which
+      CI builds under `pull_request`, with a read-only token and no secrets;
+    - when the checkout isn't at the PR's head, since the lines the tools
+      report wouldn't be the ones the diff adds.
+    Someone who can push a branch here can already run code in its
+    workflows, so their PR is built."""
     if not ctx.head_checkout or not (ctx.policy.checks.go_vet or ctx.policy.checks.clippy):
         return None
-    if from_fork(pull, ctx.gh.repo):
+    head_repo = ((((pull.get("head") or {}).get("repo") or {}).get("full_name")) or "").lower()
+    if not head_repo or head_repo != ctx.gh.repo.lower():
         return Worktree(ctx.head_checkout, "the PR comes from a fork, and building its code would run it in a job that holds "
-                                           "this repository's token. Run `stratum-open review --local` on a checkout of it instead.")
+                                           "this repository's token.")
+    user = pull.get("user") or {}
+    if (user.get("type") == "Bot" or (user.get("login") or "").endswith("[bot]")) and not ctx.policy.checks.build_bot_prs:
+        return Worktree(ctx.head_checkout, f"the PR is by a bot ({user.get('login') or 'unknown'}), and building it would run the "
+                                           "code of the releases it brings in, in a job that holds this repository's token "
+                                           "(`checks.build_bot_prs` allows it).")
     head = (pull.get("head") or {}).get("sha", "")
     try:
         at = subprocess.run(["git", "-C", ctx.head_checkout, "rev-parse", "HEAD"], capture_output=True, text=True, timeout=30).stdout.strip()

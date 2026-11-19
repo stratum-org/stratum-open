@@ -21,7 +21,7 @@ import requests
 from stratum_open.checks.dependencies import PackageLookup
 from stratum_open.github import publish
 from stratum_open.github.api import API, GitHub, GitHubError
-from stratum_open.github.commands import LABEL_COMMANDS, NEEDS_MODEL, handle, parse, unreadable_reply
+from stratum_open.github.commands import LABEL_COMMANDS, NEEDS_MODEL, handle, may_run, parse, unreadable_reply
 from stratum_open.model import model_from_policy
 from stratum_open.policy import Policy
 from stratum_open.runner import Context, checkout_ref, load_context_policy, post_early, review_pull, skip_reason, stop_early
@@ -261,32 +261,75 @@ def queue(env: Mapping[str, str] = os.environ) -> int:
             payload = json.load(handle_file)
         payload = payload if isinstance(payload, dict) else {}
         event_name = env.get("GITHUB_EVENT_NAME", "")
+        bot = env.get("STRATUM_BOT_LOGIN") or DEFAULT_BOT
+        command = None
         if event_name in ("issue_comment", "pull_request_review_comment"):
-            parsed = parse((payload.get("comment") or {}).get("body") or "")
-            if parsed is None or parsed[0] not in LABEL_COMMANDS:
-                print("This comment can't change a PR's label, so the triage queue stays as it is.")
+            # Anyone can comment, and each rebuild reads every open PR: only a command that ran rebuilds it.
+            command = _label_command(event_name, payload, bot)
+            if command is None:
                 return 0
+        if event_name == "workflow_run" and not (payload.get("workflow_run") or {}).get("pull_requests"):
+            print("This CI run re-sorted no PR, so the triage queue stays as it is.")
+            return 0
         token = env.get("STRATUM_GITHUB_TOKEN") or env.get("GITHUB_TOKEN")
         if not token:
             print("::warning::Stratum needs a GitHub token to rebuild the triage queue: pass github-token to the action.")
             return 0
-        if event_name not in ("schedule", "workflow_dispatch"):
-            # A rebuild reads every open PR. While this one waits, a newer event's rebuild in the
-            # job's concurrency group cancels it, before it has made a call, so a burst costs one.
-            raw = (env.get("STRATUM_QUEUE_WAIT") or "").strip()
-            time.sleep(int(raw) if raw.isdigit() else QUEUE_WAIT)
         repo = env.get("GITHUB_REPOSITORY") or (payload.get("repository") or {}).get("full_name") or ""
         gh = GitHub(token, repo, api=env.get("GITHUB_API_URL") or API)
-        default_branch = (payload.get("repository") or {}).get("default_branch") or gh.repository().get("default_branch") or "main"
-        policy = load_context_policy(gh, default_branch)
-        if not policy.triage.queue:
-            print(QUEUE_OFF)
+
+        def context() -> Context | None:
+            default_branch = (payload.get("repository") or {}).get("default_branch") or gh.repository().get("default_branch") or "main"
+            policy = load_context_policy(gh, default_branch)
+            if not policy.triage.queue:
+                print(QUEUE_OFF)
+                return None
+            return Context(gh=gh, policy=policy, model=None, bot=bot)
+
+        ctx = None
+        if command is not None:  # a call or two to the policy and the commenter's access, rather than a rebuild
+            ctx = context()
+            if ctx is None:
+                return 0
+            name, login, number = command
+            if not may_run(ctx, name, login, number):
+                print(f"{login} may not run that command (commands.{name}), so the triage queue stays as it is.")
+                return 0
+        if event_name not in ("schedule", "workflow_dispatch"):
+            # A rebuild reads every open PR. While this one waits, a newer event's rebuild in the
+            # job's concurrency group cancels it, before it has read them, so a burst costs one.
+            raw = (env.get("STRATUM_QUEUE_WAIT") or "").strip()
+            time.sleep(int(raw) if raw.isdigit() else QUEUE_WAIT)
+        ctx = ctx or context()
+        if ctx is None:
             return 0
-        update_queue(Context(gh=gh, policy=policy, model=None, bot=env.get("STRATUM_BOT_LOGIN") or DEFAULT_BOT))
+        update_queue(ctx)
         print("Triage queue updated.")
     except Exception as exc:
         print(f"::warning::Stratum couldn't rebuild the triage queue ({type(exc).__name__}: {redact(str(exc))[:300]}); the next run will.")
     return 0
+
+
+def _label_command(event_name: str, payload: dict, bot: str) -> tuple[str, str, int] | None:
+    """(the policy's command, the commenter, the PR) for a comment that can
+    have changed a PR's label, as `handle()` reads it; else None, said why."""
+    comment = payload.get("comment") or {}
+    parsed = parse(comment.get("body") or "")
+    if parsed is None or parsed[0] not in LABEL_COMMANDS:
+        print("This comment can't change a PR's label, so the triage queue stays as it is.")
+        return None
+    if event_name == "issue_comment":
+        issue = payload.get("issue") or {}
+        number = issue.get("number") if "pull_request" in issue else None
+    else:
+        number = (payload.get("pull_request") or {}).get("number")
+    user = comment.get("user") or {}  # None for a deleted account
+    login = user.get("login") or ""
+    if not isinstance(number, int) or not login or user.get("type") == "Bot" or login.lower().endswith("[bot]") \
+            or login.lower() == bot.lower():
+        print("This comment can't have run a command on a PR, so the triage queue stays as it is.")
+        return None
+    return LABEL_COMMANDS[parsed[0]], login, number
 
 
 def context_from_env(policy: Policy, env: Mapping[str, str]) -> Policy:

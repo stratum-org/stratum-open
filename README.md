@@ -230,10 +230,15 @@ The release after 0.3.0 rebuilds the triage queue issue after each PR's review, 
 
 - `closed` and `converted_to_draft` in the `pull_request_target` types;
 - the `stratum` job's `if:` filter, which starts no review for those two: replace `github.event_name == 'pull_request_target' ||` with `(github.event_name == 'pull_request_target' && github.event.action != 'closed' && github.event.action != 'converted_to_draft') ||`;
-- the `queue` job, named `Stratum triage queue` and pinned to the same release or commit as the review job. It runs `stratum-org/stratum-open/queue`, which starts no model, after the review job. Each rebuild costs about one API call per open PR, so after an event it waits a minute first, and a newer rebuild cancels it, so a burst of events costs one rebuild. A comment starts it only after the review job ran a command, and only `/stratum review` and `/stratum ignore` rebuild. Keep its name: Stratum leaves check runs by that name out of a PR's CI, and a cancelled one would otherwise read as failing CI;
+- the `queue` job, named `Stratum triage queue` and pinned to the same release or commit as the review job. It runs `stratum-org/stratum-open/queue`, which starts no model, after the review job. Each rebuild costs about one API call per open PR, so after an event it waits a minute first, and a newer rebuild cancels it, so a burst of events costs one rebuild. A comment starts it only after the review job ran a command, and only `/stratum review` and `/stratum ignore` on a PR rebuild, from someone `commands.review` or `commands.ignore` lets run them; a CI result rebuilds only when it re-sorted a PR. Keep its name: Stratum leaves check runs by that name out of a PR's CI, and a cancelled one would otherwise read as failing CI;
 - `triage-queue: false` on the review job's Stratum step, so the daily and manual runs leave the rebuild to the `queue` job and no two rebuilds overlap. The `stratum` job still runs on them, since its scheduled run is what keeps Ollama in the Actions cache.
 
 The first two work on 0.3.0 and are in the example already. The `queue` job and `triage-queue: false` are commented out there until the release that has the `queue` action, since `stratum-org/stratum-open/queue@v0.3.0` doesn't exist. Uncomment them together when you pin that release: `triage-queue: false` without the job stops the daily rebuild. Without either, the daily run rebuilds the queue as before.
+
+Two more changes in that release:
+
+- **`actions: read`.** On a private repo, the workflow needs `actions: read` in its `permissions:` block (the example has it), and an existing GitHub App install has to accept the new "Actions: read" permission. Without it, CI that's waiting for a maintainer's approval reads as passing again, and the only sign is a line in the job's log.
+- **`replay --json`'s `ci` field** is now a string (`"passed"`, `"failed"`, `"pending"`, `"held"` or `"none"`), not `true`/`false`/`null`.
 
 ## Upgrading to 0.3.0
 

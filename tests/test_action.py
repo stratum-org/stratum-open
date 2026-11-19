@@ -192,8 +192,9 @@ def test_the_queue_job_waits_for_a_newer_event_before_it_makes_a_call(tmp_path, 
             calls.append(list(waits))  # what had been waited by the first read
             return super().open_pulls()
 
-    gh, waits = Counting(diff=DIFF), []
-    payload = {**pr_payload(), "comment": {"id": 1, "body": "/stratum review", "user": {"login": "erin", "type": "User"}}}
+    gh, waits = Counting(diff=DIFF, permissions={"erin": "write"}), []
+    payload = {**pr_payload(), "issue": {"number": 7, "pull_request": {}}, "workflow_run": {"pull_requests": [{"number": 7}]},
+               "comment": {"id": 1, "body": "/stratum review", "user": {"login": "erin", "type": "User"}}}
     assert run_queue(tmp_path, monkeypatch, payload, gh, event_name, waits, extra) == 0
     assert waits == waited and calls == [waited] and gh.issues
 
@@ -210,16 +211,62 @@ def test_the_queue_job_waits_for_a_newer_event_before_it_makes_a_call(tmp_path, 
     ("Reply `/stratum ignore` to hide it", False),  # Stratum's own footer: not a command
 ])
 def test_a_comment_rebuilds_the_queue_only_when_its_command_can_change_a_label(tmp_path, monkeypatch, capsys, body, rebuilt):
-    gh, waits = FakeGitHub(diff=DIFF), []
+    gh, waits = FakeGitHub(diff=DIFF, permissions={"erin": "write"}), []
     for event_name in ("issue_comment", "pull_request_review_comment"):
-        payload = {"action": "created", "repository": {"default_branch": "main"}, "issue": {"number": 7, "pull_request": {}},
-                   "comment": {"id": 1, "body": body, "user": {"login": "erin", "type": "User"}}}
+        payload = comment_event(body)
         assert run_queue(tmp_path, monkeypatch, payload, gh, event_name, waits) == 0
         if rebuilt:
             assert [i["title"] for i in gh.issues] == ["Stratum triage queue"]
         else:  # before any wait or API call
             assert gh.issues == [] and waits == [] and "can't change a PR's label" in capsys.readouterr().out
     assert waits == ([60, 60] if rebuilt else [])
+
+
+def comment_event(body, login="erin", user_type="User", issue=None):
+    """A new comment, as either comment event has it: on PR 7's conversation, or inline on PR 7."""
+    return {"action": "created", "repository": {"default_branch": "main"}, "pull_request": {"number": 7},
+            "issue": issue if issue is not None else {"number": 7, "pull_request": {}},
+            "comment": {"id": 1, "body": body, "user": {"login": login, "type": user_type}}}
+
+
+@pytest.mark.parametrize("why, payload, events", [
+    ("no write access", comment_event("/stratum review", login="mallory"), ("issue_comment", "pull_request_review_comment")),
+    ("no write access", comment_event("/stratum ignore code/sql", login="mallory"), ("issue_comment", "pull_request_review_comment")),
+    ("a plain issue", comment_event("/stratum review", issue={"number": 3}), ("issue_comment",)),
+    ("a bot", comment_event("/stratum review", login="renovate", user_type="Bot"), ("issue_comment", "pull_request_review_comment")),
+    ("a bot", comment_event("/stratum review", login="helper[bot]"), ("issue_comment", "pull_request_review_comment")),
+    ("Stratum itself", comment_event("/stratum review", login="stratum[bot]"), ("issue_comment",)),
+    ("a deleted account", {**comment_event("/stratum review"), "comment": {"id": 1, "body": "/stratum review", "user": None}},
+     ("issue_comment",)),
+])
+def test_a_command_that_never_ran_leaves_the_queue_alone(tmp_path, monkeypatch, capsys, why, payload, events):
+    """The review job refuses or drops these, but succeeds, so the queue job starts: it rebuilds nothing, and doesn't wait."""
+    gh, waits = FakeGitHub(diff=DIFF, permissions={"erin": "write", "mallory": "read"}), []
+    for event_name in events:
+        assert run_queue(tmp_path, monkeypatch, payload, gh, event_name, waits) == 0, why
+        assert gh.issues == [] and waits == [], why
+        assert "the triage queue stays as it is" in capsys.readouterr().out, why
+
+
+def test_who_may_rebuild_follows_the_policys_commands(tmp_path, monkeypatch):
+    """`commands.review: anyone` lets anyone's `/stratum review` run, and so rebuild."""
+    gh, waits = FakeGitHub(diff=DIFF, files={(".stratum/policy.yml", "main"): "commands:\n  review: anyone\n"}), []
+    assert run_queue(tmp_path, monkeypatch, comment_event("/stratum review", login="mallory"), gh, "issue_comment", waits) == 0
+    assert [i["title"] for i in gh.issues] == ["Stratum triage queue"] and waits == [60]
+    gh.issues.clear()
+    # The PR's author, under `author`.
+    gh.files[(".stratum/policy.yml", "main")] = "commands:\n  ignore: author\n"
+    assert run_queue(tmp_path, monkeypatch, comment_event("/stratum ignore", login="carol"), gh, "issue_comment", waits) == 0
+    assert gh.issues and waits == [60, 60]
+
+
+def test_a_ci_run_with_no_pr_leaves_the_queue_alone(tmp_path, monkeypatch, capsys):
+    """A push to main, or a fork PR's CI, which GitHub sends with no PRs: nothing was re-sorted."""
+    gh, waits = FakeGitHub(diff=DIFF), []
+    for run_payload in ({"pull_requests": []}, {}):
+        payload = {"repository": {"default_branch": "main"}, "workflow_run": run_payload}
+        assert run_queue(tmp_path, monkeypatch, payload, gh, "workflow_run", waits) == 0
+        assert gh.issues == [] and waits == [] and "re-sorted no PR" in capsys.readouterr().out
 
 
 def test_a_label_changing_command_is_followed_by_the_queue(tmp_path, monkeypatch):

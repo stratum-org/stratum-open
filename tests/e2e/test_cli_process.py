@@ -298,6 +298,7 @@ def test_the_queue_jobs_check_runs_arent_ci(fake_github, fake_model, tmp_path, s
 
 def test_action_queue_after_a_comment_rebuilds_only_for_a_label_changing_command(fake_github, fake_model, tmp_path):
     fake_github.add_pull(7, diff=DIFF)
+    fake_github.permissions["erin"] = "write"
     run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, pr_payload()))
 
     def comment(body):

@@ -263,7 +263,9 @@ def _local_worktree(policy: Policy, files: list, top: str):
         return Worktree(top)  # nothing to build: the checks say nothing either way
     status = _git_or_none(top, "status", "--porcelain", "--no-renames", "--untracked-files=all")
     dirty = [line[3:] for line in (status or "").splitlines() if len(line) > 3]
-    if status is None or dirty:
+    if status is None:
+        return Worktree(top, "Stratum couldn't read `git status`, so it can't tell whether the checkout is the HEAD it reviews.")
+    if dirty:
         return Worktree(top, f"{listed(dirty)} {'has' if len(dirty) == 1 else 'have'} changes that aren't committed, and the review "
                              "reads HEAD. Commit or stash them, and run it again.")
     # Said before anything is built: a branch checked out from someone else's PR is their code, and it runs here.

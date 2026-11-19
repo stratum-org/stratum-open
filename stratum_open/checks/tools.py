@@ -35,6 +35,7 @@ from stratum_open.diff import FileDiff
 from stratum_open.findings import Finding
 
 MAX_LISTED = 5
+KILL_WAIT_SECONDS = 10  # how long a stopped tool's pipes may take to close
 
 
 @dataclass(frozen=True)
@@ -166,24 +167,40 @@ def build_env(environ: dict[str, str] | None = None) -> dict[str, str]:
 def run(command: list[str], *, cwd: str, timeout: float, name: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     """Run a tool with a time limit. Raises Skipped when it doesn't finish,
     after stopping it and every process it started (the compiler, a build
-    script, a macro), which would otherwise go on running."""
+    script, a macro), which would otherwise go on running. Ctrl+C, or any
+    other exception, stops them too: in a session of its own the tool doesn't
+    get the terminal's interrupt."""
     group = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
     with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True,
                           encoding="utf-8", errors="replace", cwd=cwd, env=env, **group) as process:
         try:
             stdout, stderr = process.communicate(timeout=max(1.0, timeout))
         except subprocess.TimeoutExpired:
-            stop_tree(process)
-            process.communicate()
+            _stop(process)
             raise Skipped(f"{name} took longer than {timeout:.0f} s, so its findings are missing from this review.") from None
+        except BaseException:
+            _stop(process)
+            raise
     return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+def _stop(process: subprocess.Popen) -> None:
+    """Stop the tree, then wait a little for the pipes to close: a process
+    that left the group can hold them open for ever."""
+    stop_tree(process)
+    try:
+        process.communicate(timeout=KILL_WAIT_SECONDS)
+    except (subprocess.TimeoutExpired, OSError, ValueError):
+        pass
 
 
 def stop_tree(process: subprocess.Popen) -> None:
     """Kill a process and everything it started."""
     try:
         if os.name == "nt":
-            subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)], capture_output=True, timeout=30)
+            # By its full path: a bare name is looked for in the current folder first, which can be the PR's checkout.
+            taskkill = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "taskkill.exe")
+            subprocess.run([taskkill, "/F", "/T", "/PID", str(process.pid)], capture_output=True, timeout=30)
         else:
             os.killpg(process.pid, signal.SIGKILL)
     except (OSError, subprocess.TimeoutExpired):

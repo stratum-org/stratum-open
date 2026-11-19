@@ -463,6 +463,71 @@ def test_staticcheck_that_doesnt_run_says_so(monkeypatch, tmp_path):
     assert notes == []
 
 
+class FakeProcess:
+    """A Popen whose communicate() answers, call by call, from `steps`:
+    an exception to raise, or (stdout, stderr)."""
+
+    def __init__(self, steps):
+        self.steps, self.pid, self.returncode, self.waits, self.killed = list(steps), 4242, None, [], False
+
+    def __call__(self, command, **kwargs):
+        self.command = command
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def communicate(self, timeout=None):
+        self.waits.append(timeout)
+        step = self.steps.pop(0)
+        if isinstance(step, BaseException):
+            raise step
+        return step
+
+    def kill(self):
+        self.killed = True
+
+
+def test_ctrl_c_stops_the_tool_and_what_it_started(monkeypatch, tmp_path):
+    process = FakeProcess([KeyboardInterrupt(), ("", "")])
+    stopped = []
+    monkeypatch.setattr(tools.subprocess, "Popen", process)
+    monkeypatch.setattr(tools, "stop_tree", stopped.append)
+    with pytest.raises(KeyboardInterrupt):
+        tools.run(["go", "vet"], cwd=str(tmp_path), timeout=30, name="go vet")
+    assert stopped == [process] and process.waits == [30, tools.KILL_WAIT_SECONDS]
+
+
+def test_the_wait_after_a_kill_has_a_limit(monkeypatch, tmp_path):
+    # The tool times out, and after the kill its pipes stay open (a process that left the group holds them).
+    process = FakeProcess([subprocess.TimeoutExpired("go", 5), subprocess.TimeoutExpired("go", 10)])
+    monkeypatch.setattr(tools.subprocess, "Popen", process)
+    monkeypatch.setattr(tools, "stop_tree", lambda p: None)
+    with pytest.raises(tools.Skipped, match="took longer than 5 s"):
+        tools.run(["go", "vet"], cwd=str(tmp_path), timeout=5, name="go vet")
+    assert process.waits == [5, tools.KILL_WAIT_SECONDS]
+
+
+def test_taskkill_is_run_by_its_full_path(monkeypatch):
+    commands = []
+    monkeypatch.setattr(tools.os, "name", "nt")
+    monkeypatch.setenv("SystemRoot", os.path.join(os.sep, "Win"))
+    monkeypatch.setattr(tools.subprocess, "run", lambda command, **kwargs: commands.append(command))
+    process = FakeProcess([])
+    tools.stop_tree(process)
+    assert commands[0][0] == os.path.join(os.sep, "Win", "System32", "taskkill.exe")
+    assert commands[0][1:] == ["/F", "/T", "/PID", "4242"] and process.killed
+
+
+def test_review_local_says_when_it_cant_read_git_status(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "_git_or_none", lambda *args: None)
+    refused = cli._local_worktree(GO, parse_diff(new_file("a.go", GO_FILE)), str(tmp_path)).refused
+    assert refused == "Stratum couldn't read `git status`, so it can't tell whether the checkout is the HEAD it reviews."
+
+
 def test_vendored_code_is_left_alone():
     def one(path):
         return parse_diff(new_file(path, "x\n"))[0]

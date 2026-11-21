@@ -97,6 +97,25 @@ def test_a_marked_run_gives_a_plain_count(tmp_path):
     assert "| 1 of 2 |" in text and "at least" not in text.split("| Model |", 1)[1]
 
 
+def test_a_build_check_run_gets_its_own_table(tmp_path):
+    import build_checks
+
+    run = tmp_path / "2026-01-01-build"
+    (run / "raw" / "gin").mkdir(parents=True)
+    prs = [{"repo": "gin-gonic/gin", "pr": 1, "head": "a" * 40, "order": 0, "error": "", "seconds": {"go vet": 30.0},
+            "lines": {"go vet": 12, "Clippy": 0}, "notes": [], "runs": [{"program": "go vet", "folder": ".", "code": 0, "stderr": "",
+                                                                       "seconds": 30.0, "timed_out": False, "built": 2}]}]
+    (run / "raw" / "gin" / "prs.json").write_text(json.dumps(prs))
+    issue = {"case": "gin-gonic/gin#1", "tool": "go vet", "code": "printf", "level": "", "path": "a.go", "line": 7, "text": "x",
+             "message": "m", "kept": "yes", "verdict": "wrong", "note": ""}
+    bench._write(run / "raw" / "gin" / "issues.csv", build_checks.ISSUE_COLUMNS, [issue])
+    bench._write(run / "raw" / "gin" / "kept.csv", build_checks.FINDING_COLUMNS, [])
+    page = results_page.collect(tmp_path)
+    assert [(row["setting"], row["prs"], row["lines"], row["findings"], row["wrong"]) for row in page["build"]] == [
+        ("checks.go_vet", 1, 12, 1, 1), ("checks.clippy", 0, 0, 0, 0)]
+    assert "| `checks.go_vet` | [2026-01-01-build](results/2026-01-01-build/) | 1 | 12 | 1 | 0 | 1 | 0 | 0 | 0 (over 300 s) |" in results_page.render(page)
+
+
 def test_a_folder_that_cant_be_counted_is_listed_with_the_reason(tmp_path):
     _run(tmp_path / "good", [_review("o/r#1")], [])
     _run(tmp_path / "twice", [_review("o/r#1"), _review("o/r#1")], [])
@@ -273,7 +292,7 @@ def models_table_problems(text, page):
 
 def merged_prs_problems(text, page, where):
     """"184 merged PRs" has to be the number of merged PRs some run checked."""
-    known = {row["prs"] for kind in ("checks", "corpus", "awaits", "merged", "shell") for row in page.get(kind, [])}
+    known = {row["prs"] for kind in ("checks", "corpus", "awaits", "merged", "shell", "build") for row in page.get(kind, [])}
     return [f"{where} says \"{number} merged PRs\". The runs on the page checked {', '.join(map(str, sorted(known)))}."
             for number in sorted({int(n) for n in re.findall(r"\b(\d+) (?:real |clean )?merged PRs\b", text)}) if number not in known]
 

@@ -150,6 +150,15 @@ Both are off unless their setting is on. Each ran on merged PRs that change a sh
 | `checks.shellcheck` | [2026-11-14-shell-checks](results/2026-11-14-shell-checks/) | 65 | 2,146 | 0 | 109 | 23,997 | 1 | 0 | 1 | 0 | 0 of 1 | 0% to 79% |
 | `checks.actionlint` | [2026-11-14-shell-checks](results/2026-11-14-shell-checks/) | 129 | 1,467 | 0 | 144 | 24,353 | 21 | 9 | 11 | 1 | 9 of 20 | 26% to 66% |
 
+## go vet and Clippy
+
+Both are off unless their setting is on, and both build the PR's code. Each ran on merged PRs checked out at their head, where any finding is a possible false alarm. Every issue the programs reported on a line a PR adds is marked right when what it says is true of the code, and wrong (a false alarm) when the code works as meant. A PR didn't build when a coverage line says so, or when the program built nothing.
+
+| Setting | Run | Merged PRs | Added lines | Findings on them | Right | Wrong | Unsure | Didn't build | Past the review's limit |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `checks.go_vet` | [2026-11-21-build-checks-actions-cpu](results/2026-11-21-build-checks-actions-cpu/) | 60 | 987 | 0 | 0 | 0 | 0 | 0 | 0 (over 300 s) |
+| `checks.clippy` | [2026-11-21-build-checks-actions-cpu](results/2026-11-21-build-checks-actions-cpu/) | 59 | 2,839 | 0 | 0 | 0 | 0 | 2 | 0 (over 600 s) |
+
 ## The model's review: merged PRs as they are
 
 Real merged PRs with nothing planted, so each finding needs a maintainer to mark it. Until one does, a run has times and counts but no share right.

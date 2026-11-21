@@ -1,0 +1,424 @@
+[
+ {
+  "repo": "tokio-rs/tokio",
+  "pr": 8771,
+  "head": "93df7c6cd7c932d82cb4620c70516fb3c8a15d84",
+  "order": 0,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 4
+  },
+  "seconds": {
+   "Clippy": 2.9
+  },
+  "programs": {
+   "Clippy": 2.9
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "tokio-test",
+    "code": 0,
+    "stderr": "",
+    "seconds": 2.9,
+    "timed_out": false,
+    "built": 5,
+    "compiled": 5
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89415.2,
+   "clone_mb": 15.4,
+   "target_mb": 36.4
+  }
+ },
+ {
+  "repo": "tokio-rs/tokio",
+  "pr": 8766,
+  "head": "4fd4d48c30fc9770745cb2ae03b27e022df57432",
+  "order": 1,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 11
+  },
+  "seconds": {
+   "Clippy": 0.9
+  },
+  "programs": {
+   "Clippy": 0.9
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "tokio",
+    "code": 0,
+    "stderr": "warning: unused dependency `pin-project-lite`",
+    "seconds": 0.9,
+    "timed_out": false,
+    "built": 2,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89412.0,
+   "clone_mb": 15.5,
+   "target_mb": 39.9
+  }
+ },
+ {
+  "repo": "tokio-rs/tokio",
+  "pr": 8753,
+  "head": "5c25ac1dc1af5f1e1074b87644b7403f73de8fd0",
+  "order": 2,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "seconds": {
+   "Clippy": 1.4
+  },
+  "programs": {
+   "Clippy": 1.4
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "tokio-util",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.4,
+    "timed_out": false,
+    "built": 6,
+    "compiled": 4
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89395.5,
+   "clone_mb": 15.5,
+   "target_mb": 58.2
+  }
+ },
+ {
+  "repo": "tokio-rs/tokio",
+  "pr": 8752,
+  "head": "21a6c034a771b1ca22a383b9279a4c4288b09062",
+  "order": 3,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 4
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 41
+  },
+  "seconds": {
+   "Clippy": 0.5
+  },
+  "programs": {
+   "Clippy": 0.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "tokio",
+    "code": 0,
+    "stderr": "warning: unused dependency `pin-project-lite`",
+    "seconds": 0.5,
+    "timed_out": false,
+    "built": 2,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89395.4,
+   "clone_mb": 15.6,
+   "target_mb": 58.2
+  }
+ },
+ {
+  "repo": "tokio-rs/tokio",
+  "pr": 8751,
+  "head": "bc945d72a0f1e3939f5533857eaff80772392b59",
+  "order": 4,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 2
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 39
+  },
+  "seconds": {
+   "Clippy": 0.4
+  },
+  "programs": {
+   "Clippy": 0.4
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "tokio",
+    "code": 0,
+    "stderr": "warning: unused dependency `pin-project-lite`",
+    "seconds": 0.4,
+    "timed_out": false,
+    "built": 2,
+    "compiled": 0
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89395.4,
+   "clone_mb": 15.6,
+   "target_mb": 58.2
+  }
+ },
+ {
+  "repo": "tokio-rs/tokio",
+  "pr": 8750,
+  "head": "f3a3dd758adc8834903dc19dd8b4b3644ed650b6",
+  "order": 5,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 62
+  },
+  "seconds": {
+   "Clippy": 0.5
+  },
+  "programs": {
+   "Clippy": 0.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "tokio",
+    "code": 0,
+    "stderr": "warning: unused dependency `pin-project-lite`",
+    "seconds": 0.5,
+    "timed_out": false,
+    "built": 2,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89395.4,
+   "clone_mb": 15.6,
+   "target_mb": 58.2
+  }
+ },
+ {
+  "repo": "tokio-rs/tokio",
+  "pr": 8745,
+  "head": "a38904ba10bb24e757fc4264605b811cc1164186",
+  "order": 6,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 4
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 22
+  },
+  "seconds": {
+   "Clippy": 0.6
+  },
+  "programs": {
+   "Clippy": 0.6
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "tokio",
+    "code": 0,
+    "stderr": "warning: unused dependency `pin-project-lite`",
+    "seconds": 0.6,
+    "timed_out": false,
+    "built": 2,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89395.3,
+   "clone_mb": 15.7,
+   "target_mb": 58.2
+  }
+ },
+ {
+  "repo": "tokio-rs/tokio",
+  "pr": 8744,
+  "head": "df34226d468c6517a966b8c14c245159bf9a1d51",
+  "order": 7,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 4
+  },
+  "seconds": {
+   "Clippy": 1.6
+  },
+  "programs": {
+   "Clippy": 1.6
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "tokio-stream",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.6,
+    "timed_out": false,
+    "built": 4,
+    "compiled": 2
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89373.9,
+   "clone_mb": 15.6,
+   "target_mb": 82.6
+  }
+ },
+ {
+  "repo": "tokio-rs/tokio",
+  "pr": 8743,
+  "head": "8e7f4c9f3b008c252c2daca78bcc1779215da35f",
+  "order": 8,
+  "error": "its diff isn't in the cache: GitHub has no such PR any more, or `fetch` wasn't run for it",
+  "skipped": true
+ },
+ {
+  "repo": "tokio-rs/tokio",
+  "pr": 8736,
+  "head": "2bbbbd01dd22a29084ad40562cdd1e324f8a7681",
+  "order": 9,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 20
+  },
+  "seconds": {
+   "Clippy": 0.6
+  },
+  "programs": {
+   "Clippy": 0.6
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "tokio",
+    "code": 0,
+    "stderr": "warning: unused dependency `pin-project-lite`",
+    "seconds": 0.6,
+    "timed_out": false,
+    "built": 2,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89373.9,
+   "clone_mb": 15.6,
+   "target_mb": 82.6
+  }
+ }
+]

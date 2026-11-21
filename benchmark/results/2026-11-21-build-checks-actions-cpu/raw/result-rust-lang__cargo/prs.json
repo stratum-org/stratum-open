@@ -1,0 +1,492 @@
+[
+ {
+  "repo": "rust-lang/cargo",
+  "pr": 17718,
+  "head": "9dc693282dcd7cba324efc84c4aa0646e9123d9a",
+  "order": 0,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 6
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 17
+  },
+  "seconds": {
+   "Clippy": 43.0
+  },
+  "programs": {
+   "Clippy": 43.0
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 41.0,
+    "timed_out": false,
+    "built": 342,
+    "compiled": 342
+   },
+   {
+    "program": "Clippy",
+    "folder": "crates/cargo-util",
+    "code": 0,
+    "stderr": "",
+    "seconds": 2.0,
+    "timed_out": false,
+    "built": 51,
+    "compiled": 25
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88426.8,
+   "clone_mb": 50.7,
+   "target_mb": 716.2
+  }
+ },
+ {
+  "repo": "rust-lang/cargo",
+  "pr": 17713,
+  "head": "a5ddd0eb906b5eb93cfb5b79d6854a39df2a6588",
+  "order": 1,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 5
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 40
+  },
+  "seconds": {
+   "Clippy": 12.9
+  },
+  "programs": {
+   "Clippy": 12.9
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 8.5,
+    "timed_out": false,
+    "built": 342,
+    "compiled": 13
+   },
+   {
+    "program": "Clippy",
+    "folder": "crates/cargo-util-schemas",
+    "code": 0,
+    "stderr": "",
+    "seconds": 4.4,
+    "timed_out": false,
+    "built": 56,
+    "compiled": 37
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88200.9,
+   "clone_mb": 50.9,
+   "target_mb": 953.2
+  }
+ },
+ {
+  "repo": "rust-lang/cargo",
+  "pr": 17710,
+  "head": "cc597edf73c957a20d78040ed07623ac4c0e0034",
+  "order": 2,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 15
+  },
+  "seconds": {
+   "Clippy": 9.6
+  },
+  "programs": {
+   "Clippy": 9.6
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 9.6,
+    "timed_out": false,
+    "built": 342,
+    "compiled": 14
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88056.8,
+   "clone_mb": 51.3,
+   "target_mb": 1108.7
+  }
+ },
+ {
+  "repo": "rust-lang/cargo",
+  "pr": 17706,
+  "head": "d3900474d74fa333383f7fe251936f9bbdd28f21",
+  "order": 3,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 2
+  },
+  "seconds": {
+   "Clippy": 10.7
+  },
+  "programs": {
+   "Clippy": 10.7
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 10.7,
+    "timed_out": false,
+    "built": 341,
+    "compiled": 12
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87918.2,
+   "clone_mb": 52.2,
+   "target_mb": 1259.2
+  }
+ },
+ {
+  "repo": "rust-lang/cargo",
+  "pr": 17702,
+  "head": "208326ebce710e79e0a0aa8dbd923af765ab149c",
+  "order": 4,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 5
+  },
+  "seconds": {
+   "Clippy": 9.0
+  },
+  "programs": {
+   "Clippy": 9.0
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 9.0,
+    "timed_out": false,
+    "built": 341,
+    "compiled": 2
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87917.2,
+   "clone_mb": 52.2,
+   "target_mb": 1260.2
+  }
+ },
+ {
+  "repo": "rust-lang/cargo",
+  "pr": 17701,
+  "head": "a6069cd5c602a80cbffd9993de5078d987e841a1",
+  "order": 5,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 2
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 29
+  },
+  "seconds": {
+   "Clippy": 10.2
+  },
+  "programs": {
+   "Clippy": 10.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 9.3,
+    "timed_out": false,
+    "built": 341,
+    "compiled": 2
+   },
+   {
+    "program": "Clippy",
+    "folder": "crates/cargo-util-schemas",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.9,
+    "timed_out": false,
+    "built": 56,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87905.7,
+   "clone_mb": 52.3,
+   "target_mb": 1272.5
+  }
+ },
+ {
+  "repo": "rust-lang/cargo",
+  "pr": 17700,
+  "head": "dce851b02ef4b497f5d4b91e737d461bfde0ea64",
+  "order": 6,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 4
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 134
+  },
+  "seconds": {
+   "Clippy": 9.0
+  },
+  "programs": {
+   "Clippy": 9.0
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "benches/benchsuite",
+    "code": 0,
+    "stderr": "",
+    "seconds": 9.0,
+    "timed_out": false,
+    "built": 342,
+    "compiled": 3
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87903.1,
+   "clone_mb": 52.3,
+   "target_mb": 1274.9
+  }
+ },
+ {
+  "repo": "rust-lang/cargo",
+  "pr": 17699,
+  "head": "c7c115906c6990fa3a916cde77a896e6e6802c59",
+  "order": 7,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 8
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 378
+  },
+  "seconds": {
+   "Clippy": 8.9
+  },
+  "programs": {
+   "Clippy": 8.9
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 8.9,
+    "timed_out": false,
+    "built": 341,
+    "compiled": 12
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87902.5,
+   "clone_mb": 52.3,
+   "target_mb": 1275.0
+  }
+ },
+ {
+  "repo": "rust-lang/cargo",
+  "pr": 17698,
+  "head": "7fa59bcc7006e16ced85b432230b13bb8530b286",
+  "order": 8,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 18
+  },
+  "seconds": {
+   "Clippy": 9.8
+  },
+  "programs": {
+   "Clippy": 9.8
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 9.8,
+    "timed_out": false,
+    "built": 345,
+    "compiled": 16
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87761.8,
+   "clone_mb": 52.4,
+   "target_mb": 1427.3
+  }
+ },
+ {
+  "repo": "rust-lang/cargo",
+  "pr": 17691,
+  "head": "d5bb650e0904e100291f026aa8746cf5c2b10dd0",
+  "order": 9,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 11
+  },
+  "seconds": {
+   "Clippy": 3.5
+  },
+  "programs": {
+   "Clippy": 3.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 3.5,
+    "timed_out": false,
+    "built": 341,
+    "compiled": 12
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87762.1,
+   "clone_mb": 52.4,
+   "target_mb": 1427.0
+  }
+ }
+]

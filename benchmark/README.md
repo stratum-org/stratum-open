@@ -133,12 +133,21 @@ python benchmark/shell_checks.py score benchmark/results/<name>   # after markin
 
 **Checks that build the code.** `checks.go_vet` and `checks.clippy` (both off by default) compile the PR's code, so they
 need each PR checked out at its head, with its dependencies, and not only its diff and files, which is all `planted.py
-checks` and the corpus fetch. They have not been measured on merged PRs yet. Doing so means cloning the 12 Go and Rust
-projects of `clean-go.json` and `clean-rust.json`, checking out each of their 120 PRs, downloading its dependencies and
-building it: on a 4-CPU runner, minutes for a Go project and longer for a big Rust one (cargo and nushell take over ten
-minutes to build from nothing). Until that run exists, their README entries say they're unmeasured, and what they keep is
-the tools' own correctness rules: every go vet analyzer but `composites` and `tests`, staticcheck's SA checks but SA1019
-and SA5009, and Clippy's `correctness` group.
+checks` and the corpus fetch. [build_checks.py](build_checks.py) clones each of the 12 Go and Rust projects of
+`clean-go.json` and `clean-rust.json` once, checks out each of their 120 PRs at its head (`pull/N/head`), runs both checks
+on it as a review would, and writes down every issue go vet, staticcheck and Clippy report on a line the PR adds, kept or
+not, with the seconds each build took. The first PR of each project is built with nothing cached, as on a fresh runner;
+the others reuse what the PRs before them downloaded and built. Building a project runs its code, so start the
+**Build-check benchmark** workflow, which runs it on GitHub's runners, one job per project, in jobs that hold no token.
+It hasn't been run yet. Until it has, their README entries say they're unmeasured, and what they keep is the tools' own
+correctness rules: every go vet analyzer but `composites` and `tests`, staticcheck's SA checks but SA1019 and SA5009, and
+Clippy's `correctness` group.
+
+```sh
+python benchmark/build_checks.py fetch   # the PRs' diffs, the one step that needs a GitHub token
+python benchmark/build_checks.py run --repos ../repos --out benchmark/results/<name>/raw/<project> --repo <owner/name>
+python benchmark/build_checks.py score benchmark/results/<name>   # after marking issues.csv
+```
 
 **Trying a change.** Each case is in the `dev` or the `test` set (in bugs.json, stratified by kind):
 - **Tune on dev only.** Use `--set dev`, and run `test` once at the end, so the result isn't tuned to its cases.

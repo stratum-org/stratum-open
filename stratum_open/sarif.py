@@ -13,9 +13,10 @@ Each finding on a line is a result:
   same way, so a team can leave the model's findings out;
 - the fingerprint is its `primaryLocationLineHash`, the one partial
   fingerprint code scanning reads. It keys on the code, not the line
-  number, so an alert follows its code when lines move. Without it, GitHub's
-  upload action hashes the lines of the files it finds on disk, which in
-  the example workflow are the default branch's, not the PR's.
+  number, so an alert follows its code when lines move. Without it,
+  github/codeql-action/upload-sarif hashes the lines of the files it finds
+  on disk, which in a `pull_request_target` workflow are the default
+  branch's, not the PR's.
 
 Code scanning shows a result only on a line, so a finding without one
 (about a whole file, or the PR as a whole) isn't in `results`. It's in the

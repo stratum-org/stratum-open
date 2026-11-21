@@ -38,9 +38,9 @@ inputs:
     default: "true"
   sarif:
     description: >-
-      A path to write each posted PR review's findings to, as SARIF 2.1.0, for github/codeql-action/upload-sarif
-      and other tools that read SARIF. Leave empty (the default) to write none. See "Findings in code scanning" in
-      the README, which shows the upload step and why it skips PRs from forks.
+      A path to write each posted PR review's findings to, as SARIF 2.1.0, for GitHub's code scanning and other
+      tools that read SARIF. Leave empty (the default) to write none. "Findings in code scanning" in the README
+      shows the step that uploads it.
     default: ""
 
 runs:

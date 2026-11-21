@@ -1,11 +1,15 @@
+import base64
+import gzip
 import json
 import os
-import re
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import jsonschema
 import pytest
+import yaml
 
 from fakes import FakeGitHub, FakeModel
 from test_action import workflow
@@ -258,12 +262,16 @@ def test_the_action_passes_sarif_to_the_review_step():
     assert "STRATUM_SARIF" not in steps["early"]["env"]  # the early post isn't the review
 
 
+
+
 # ── the example workflow ─────────────────────────────────────────────────
+
+EXAMPLE = ROOT / "examples" / "stratum.yml"
 
 
 def with_sarif(example: str) -> str:
     """examples/stratum.yml as the release after 0.3.0 will have it: `security-events: write`, the
-    `sarif` input and the two steps after Stratum's, uncommented together."""
+    `sarif` input and the upload step after Stratum's, uncommented together."""
     for off in ("  # security-events: write\n", "          # sarif: stratum.sarif\n"):
         assert example.count(off) == 1
         example = example.replace(off, off.replace("# ", "", 1))
@@ -274,35 +282,82 @@ def with_sarif(example: str) -> str:
     return example[:start] + "\n".join("      " + line[8:] for line in block) + example[end:]
 
 
+def upload_step() -> dict:
+    later = yaml.safe_load(with_sarif(EXAMPLE.read_text(encoding="utf-8")))
+    return later["jobs"]["stratum"]["steps"][-1]
+
+
 def test_the_example_keeps_the_sarif_upload_commented_until_its_pin_has_the_input():
     """v0.3.0 has no `sarif` input: it would write no file, and the upload step would never run."""
-    import yaml
-
     shipped = workflow("examples/stratum.yml")
     steps = shipped["jobs"]["stratum"]["steps"]
     [review] = [step for step in steps if "ollama-model" in (step.get("with") or {})]
     assert review["uses"] == "stratum-org/stratum-open@v0.3.0" and "sarif" not in review["with"]
     assert "security-events" not in shipped["permissions"] and steps[-1] is review
 
-    later = yaml.safe_load(with_sarif((ROOT / "examples" / "stratum.yml").read_text(encoding="utf-8")))
+    later = yaml.safe_load(with_sarif(EXAMPLE.read_text(encoding="utf-8")))
     steps = later["jobs"]["stratum"]["steps"]
     [review] = [step for step in steps if "ollama-model" in (step.get("with") or {})]
     path = review["with"]["sarif"]
     assert later["permissions"]["security-events"] == "write"
-    upload, artifact = steps[steps.index(review) + 1:]
-    assert re.fullmatch(r"github/codeql-action/upload-sarif@[0-9a-f]{40}", upload["uses"])
-    assert re.fullmatch(r"actions/upload-artifact@[0-9a-f]{40}", artifact["uses"])
-    assert upload["with"]["sarif_file"] == artifact["with"]["path"] == path
-    # The PR's head: on pull_request_target, GITHUB_REF and GITHUB_SHA are the default branch's.
-    assert upload["with"]["ref"] == "refs/pull/${{ github.event.pull_request.number }}/head"
-    assert upload["with"]["sha"] == "${{ github.event.pull_request.head.sha }}"
-    # Only PR events write the file; a PR from a fork keeps it as an artifact instead of uploading it.
-    for step in (upload, artifact):
-        assert "github.event_name == 'pull_request_target'" in step["if"] and f"hashFiles('{path}') != ''" in step["if"]
-    assert "github.event.pull_request.head.repo.full_name == github.repository" in upload["if"]
-    assert "github.event.pull_request.head.repo.full_name != github.repository" in artifact["if"]
+    [upload] = steps[steps.index(review) + 1:]
+    # Only PR events write the file, a fork's PR included: on pull_request_target its token is the base repository's.
+    assert upload["if"] == f"github.event_name == 'pull_request_target' && hashFiles('{path}') != ''"
+    # The PR's ref and head: on pull_request_target, GITHUB_REF and GITHUB_SHA are the default branch's.
+    assert upload["env"] == {"GH_TOKEN": "${{ github.token }}", "PR": "${{ github.event.pull_request.number }}",
+                             "SHA": "${{ github.event.pull_request.head.sha }}"}
+    assert f"gzip -c {path} " in upload["run"] and 'ref="refs/pull/$PR/head"' in upload["run"] and 'commit_sha="$SHA"' in upload["run"]
+    assert "${{" not in upload["run"]  # what the event says reaches the script as variables, never as its text
+    # The README shows the same steps.
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    section = readme[readme.index("### Findings in code scanning (SARIF)"):]
+    block = section[section.index("```yaml\n") + len("```yaml\n"):]
+    shown = yaml.safe_load(block[:block.index("```\n")])
+    assert shown[0]["with"] == {"ollama-model": "gpt-oss:20b", "sarif": path} and shown[1:] == [upload]
     # The release uncomments the queue job too; the two go together.
     from test_action import uncommented
 
-    both = yaml.safe_load(with_sarif(uncommented((ROOT / "examples" / "stratum.yml").read_text(encoding="utf-8"))))
-    assert list(both["jobs"]) == ["stratum", "queue"] and both["jobs"]["stratum"]["steps"][-2:] == [upload, artifact]
+    both = yaml.safe_load(with_sarif(uncommented(EXAMPLE.read_text(encoding="utf-8"))))
+    assert list(both["jobs"]) == ["stratum", "queue"] and both["jobs"]["stratum"]["steps"][-1] == upload
+
+
+GH = """#!/bin/bash
+# A stand-in for the GitHub CLI: logs each call, keeps the file sent, and answers as the code scanning API does.
+echo "$*" >> "$GH_LOG"
+for arg in "$@"; do case "$arg" in sarif=@*) cp "${arg#sarif=@}" "$GH_LOG.sent" ;; esac; done
+case "$*" in
+  *"/code-scanning/sarifs -f"*) echo 47 ;;
+  *"/code-scanning/sarifs/47 --jq .processing_status") echo "$GH_STATUS" ;;
+  *"/code-scanning/sarifs/47") echo "{\\"processing_status\\":\\"$GH_STATUS\\",\\"errors\\":[\\"the reason\\"]}" ;;
+  *) exit 1 ;;
+esac
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32" or shutil.which("bash") is None, reason="the step runs in bash, on GitHub's Ubuntu runner")
+@pytest.mark.parametrize("status, code", [("complete", 0), ("failed", 1)])
+def test_the_upload_step_sends_the_file_for_the_prs_head_and_waits_for_code_scanning(tmp_path, status, code):
+    upload = upload_step()
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "gh").write_text(GH, encoding="utf-8", newline="\n")
+    (tmp_path / "bin" / "gh").chmod(0o755)
+    (tmp_path / "work").mkdir()
+    sarif.write(tmp_path / "work" / "stratum.sarif", every_severity())
+    log = tmp_path / "gh.log"
+    env = {"PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "GITHUB_REPOSITORY": "acme/widget", "RUNNER_TEMP": str(tmp_path),
+           "GH_TOKEN": "t", "PR": "7", "SHA": "a" * 40, "GH_LOG": str(log), "GH_STATUS": status}
+    # How GitHub runs a `run:` step with `shell: bash`.
+    result = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", upload["run"]], cwd=tmp_path / "work", env=env,
+                            capture_output=True, text=True, timeout=60)
+    assert result.returncode == code, result.stderr
+    calls = log.read_text(encoding="utf-8").splitlines()
+    assert calls[:2] == [
+        f"api repos/acme/widget/code-scanning/sarifs -f commit_sha={'a' * 40} -f ref=refs/pull/7/head -f tool_name=Stratum Open "
+        f"-F sarif=@{tmp_path}/stratum.sarif.b64 --jq .id",
+        "api repos/acme/widget/code-scanning/sarifs/47 --jq .processing_status",
+    ]
+    # What the API takes: the file, gzipped and in base64.
+    assert gzip.decompress(base64.b64decode((tmp_path / "gh.log.sent").read_text())) == (tmp_path / "work" / "stratum.sarif").read_bytes()
+    assert f"Code scanning: {status}" in result.stdout
+    if code:  # what code scanning said is in the job's log
+        assert calls[2:] == ["api repos/acme/widget/code-scanning/sarifs/47"] and "the reason" in result.stdout

@@ -14,7 +14,9 @@ on:
   pull_request_review_comment:
     types: [created]
   # Optional: re-sort a PR when your CI finishes, so its label sees the result.
-  # Name your CI workflows here. (GitHub leaves fork PRs out of these events.)
+  # Name your CI workflows here. The event doesn't name a PR from a fork, so
+  # Stratum finds it by the run's commit, fork and branch, and re-sorts it if
+  # it has reviewed that commit.
   # workflow_run:
   #   workflows: [tests]
   #   types: [completed]

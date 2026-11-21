@@ -140,15 +140,17 @@ def _run(env: Mapping[str, str], event_name: str, payload: dict, gh: GitHub, loa
         # CI finished: sort the PR again with its result. Same head, so the
         # model reads only files the last review couldn't (usually none). The
         # skip settings apply here too; review.events doesn't, since this isn't
-        # a PR event.
-        for ref in (payload.get("workflow_run") or {}).get("pull_requests") or []:
-            if not isinstance(ref, dict) or not ref.get("number"):
-                continue
-            reason = skip_reason(gh.pull(ref["number"]), None, policy)
+        # a PR event. A PR from a fork isn't named in the event, so it's found
+        # by the run's commit, fork and branch, and re-sorted only if Stratum
+        # has reviewed that commit.
+        run = payload.get("workflow_run") or {}
+        named = [ref["number"] for ref in run.get("pull_requests") or [] if isinstance(ref, dict) and ref.get("number")]
+        for pull in [gh.pull(number) for number in named] if named else _run_pulls(gh, run):
+            reason = skip_reason(pull, None, policy) or (None if named else _unreviewed(ctx, pull))
             if reason:
-                print(f"PR #{ref['number']}: {reason}")
+                print(f"PR #{pull['number']}: {reason}")
                 continue
-            outcome = review_pull(ctx, ref["number"])
+            outcome = review_pull(ctx, pull["number"])
             print(f"PR #{outcome.number}: re-sorted as {outcome.triage.key if outcome.triage else outcome.status}")
     elif event_name in ("schedule", "workflow_dispatch"):
         if (env.get("STRATUM_TRIAGE_QUEUE") or "").strip().lower() == "false":
@@ -162,6 +164,46 @@ def _run(env: Mapping[str, str], event_name: str, payload: dict, gh: GitHub, loa
     else:
         print(f"Stratum doesn't handle {event_name} events.")
     return 0
+
+
+def _run_pulls(gh: GitHub, run: dict) -> list[dict]:
+    """The open PRs a finished CI run was for, when `workflow_run.pull_requests`
+    names none, as GitHub does for a PR from a fork: those whose head is the
+    run's commit, on the run's repository and branch. The commit alone isn't
+    enough, since another fork's PR can have the same one; that PR's own run
+    re-sorts it. Only a PR event's run is looked up (`pull_request`, and
+    `pull_request_target`, which GitHub also files under the PR's head commit,
+    branch and fork). Any other run that names no PR, like a push to the
+    default branch, is no PR's: GitHub names the PRs of this repository's own
+    branches. The event's values are only compared, never run. Says in the
+    job log when no PR matches."""
+    if run.get("event") not in ("pull_request", "pull_request_target"):
+        print(f"This CI run ({run.get('event') or 'no event'}) names no PR, so there's no PR to re-sort.")
+        return []
+
+    def head_of(pull: dict) -> tuple[str, str, str]:
+        head = pull.get("head") or {}
+        return head.get("sha") or "", ((head.get("repo") or {}).get("full_name") or "").lower(), head.get("ref") or ""
+
+    want = (run.get("head_sha") or "", ((run.get("head_repository") or {}).get("full_name") or "").lower(), run.get("head_branch") or "")
+    found = [pull for pull in gh.open_pulls() if head_of(pull) == want] if all(want) else []
+    if not found:
+        print(f"No open PR has {want[0][:7] or 'no commit'} from {want[1] or 'no repository'}:{want[2]} at its head, "
+              "so there's no PR to re-sort.")
+    return found
+
+
+def _unreviewed(ctx: Context, pull: dict) -> str | None:
+    """Why a PR found by its CI run's commit isn't re-sorted: Stratum hasn't
+    reviewed that commit yet. That review comes from the PR's own event and
+    reads the CI then. A CI result doesn't start it, so a workflow that holds
+    an outside PR's review for approval (an `environment`) still holds it,
+    and a review that's still running isn't done twice. Only Stratum's own
+    summary counts (`find_summary`)."""
+    summary = publish.find_summary(ctx.gh.issue_comments(pull["number"]), ctx.bot)
+    if summary is not None and publish.State.decode(summary["body"]).head == pull["head"]["sha"]:
+        return None
+    return "Stratum hasn't reviewed this commit yet; that review reads the CI and sorts the PR."
 
 
 def _context(env: Mapping[str, str], gh: GitHub, policy: Policy, model, default_branch: str) -> Context:
@@ -274,15 +316,17 @@ def queue(env: Mapping[str, str] = os.environ) -> int:
             command = _label_command(event_name, payload, bot)
             if command is None:
                 return 0
-        if event_name == "workflow_run" and not (payload.get("workflow_run") or {}).get("pull_requests"):
-            print("This CI run re-sorted no PR, so the triage queue stays as it is.")
-            return 0
         token = env.get("STRATUM_GITHUB_TOKEN") or env.get("GITHUB_TOKEN")
         if not token:
             print("::warning::Stratum needs a GitHub token to rebuild the triage queue: pass github-token to the action.")
             return 0
         repo = env.get("GITHUB_REPOSITORY") or (payload.get("repository") or {}).get("full_name") or ""
         gh = GitHub(token, repo, api=env.get("GITHUB_API_URL") or API)
+        run = payload.get("workflow_run") or {}
+        # The event doesn't name a fork's PR: the review job found it by the run's commit, and so does this.
+        if event_name == "workflow_run" and not run.get("pull_requests") and not _run_pulls(gh, run):
+            print("This CI run re-sorted no PR, so the triage queue stays as it is.")
+            return 0
 
         def context() -> Context | None:
             default_branch = (payload.get("repository") or {}).get("default_branch") or gh.repository().get("default_branch") or "main"

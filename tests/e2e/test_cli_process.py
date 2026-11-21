@@ -313,3 +313,45 @@ def test_action_queue_after_a_comment_rebuilds_only_for_a_label_changing_command
     assert result.returncode == 0 and "Triage queue updated." in result.stdout, result.stderr
     assert [i["title"] for i in fake_github.issues] == ["Stratum triage queue"]
     assert_no_traceback(result.stderr)
+
+
+def test_action_re_sorts_a_fork_pr_when_its_held_ci_has_run(fake_github, fake_model, tmp_path):
+    """#201: a first-time contributor's PR, sorted while GitHub held its CI for approval. A maintainer approves the
+    workflows, they pass, and `workflow_run` comes with no `pull_requests`: the run's commit, fork and branch find the PR."""
+    fake_github.set_policy("triage:\n  enabled: true\n")
+    clean = DIFF.replace(f"+    {SQL_LINE}", '+    cur = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))')
+    fake_github.add_pull(7, diff=clean, fork=True, linked_issues=[3])
+    fake_github.ci_runs[HEAD] = [{"name": "cla", "check_suite": {"id": 1}, "status": "completed", "conclusion": "success"}]
+    held = {"id": 1, "workflow_id": 1, "name": "tests", "event": "pull_request", "status": "completed", "conclusion": "action_required",
+            "created_at": "2026-01-01T12:00:00Z", "run_attempt": 1}
+    fake_github.workflow_runs[HEAD] = [held]
+    fake_model.queue(Response.ok(json_reply([])))
+    result = run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, pr_payload()))
+    assert result.returncode == 0 and fake_github.labels_on(7) == ["triage: needs a maintainer"], result.stderr
+
+    # Approved in place (attempt 2), and passed: its check run lands on the PR's head.
+    fake_github.workflow_runs[HEAD] = [{**held, "conclusion": "success", "run_attempt": 2, "run_started_at": "2026-01-01T13:00:00Z"}]
+    fake_github.ci_runs[HEAD].append({"name": "test", "check_suite": {"id": 2}, "status": "completed", "conclusion": "success"})
+    ci = {"action": "completed", "repository": {"default_branch": "main", "full_name": fake_github.repo},
+          "workflow_run": {"event": "pull_request", "status": "completed", "conclusion": "success", "pull_requests": [], "head_sha": HEAD,
+                           "head_branch": "feature-7", "head_repository": {"full_name": f"forker/{fake_github.name}"}}}
+    calls = len(fake_model.chat_calls)
+    result = run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, ci, event="workflow_run"))
+    assert result.returncode == 0 and "PR #7: re-sorted as ready" in result.stdout, result.stdout + result.stderr
+    assert fake_github.labels_on(7) == ["triage: ready"] and len(fake_model.chat_calls) == calls
+    summary = fake_github.summary_comments(7)[0]["body"]
+    assert "CI passes." in summary and "CI hasn't run" not in summary
+    result = run_stratum(["action", "--queue"], env=action_env(fake_github, fake_model, tmp_path, ci, event="workflow_run"))
+    assert result.returncode == 0 and "Triage queue updated." in result.stdout, result.stderr
+    [queue] = fake_github.issues
+    assert "### triage: ready (1)" in queue["body"] and "#7 " in queue["body"]
+
+    # Another fork's PR could have the same commit: a run from that fork isn't this PR's, and changes nothing here.
+    other = {**ci, "workflow_run": {**ci["workflow_run"], "head_repository": {"full_name": f"eve/{fake_github.name}"}}}
+    before = len(fake_github.requests)
+    result = run_stratum(["action", "--queue"], env=action_env(fake_github, fake_model, tmp_path, other, event="workflow_run"))
+    assert result.returncode == 0 and "No open PR has" in result.stdout and "re-sorted no PR" in result.stdout, result.stderr
+    assert [r["path"] for r in fake_github.requests[before:]] == [f"/repos/{fake_github.repo}/pulls"]  # the one list, no rebuild
+    result = run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, other, event="workflow_run"))
+    assert result.returncode == 0 and "No open PR has" in result.stdout and "re-sorted" not in result.stdout
+    assert_no_traceback(result.stderr, result.stdout)

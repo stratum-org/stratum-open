@@ -12,6 +12,7 @@ from stratum_open import action
 from stratum_open.github import publish
 from stratum_open.github.api import GitHubError
 from stratum_open.github.commands import parse
+from stratum_open.platform import CI
 from stratum_open.policy import parse_policy
 from stratum_open.runner import QUEUE_JOB, Context, review_pull
 
@@ -261,12 +262,26 @@ def test_who_may_rebuild_follows_the_policys_commands(tmp_path, monkeypatch):
 
 
 def test_a_ci_run_with_no_pr_leaves_the_queue_alone(tmp_path, monkeypatch, capsys):
-    """A push to main, or a fork PR's CI, which GitHub sends with no PRs: nothing was re-sorted."""
-    gh, waits = FakeGitHub(diff=DIFF), []
-    for run_payload in ({"pull_requests": []}, {}):
+    """A push to main, which GitHub sends with no PRs, or CI on a fork's commit that no open PR has: nothing was re-sorted."""
+    gh, waits = on_a_fork(FakeGitHub(diff=DIFF)), []
+    for run_payload in ({"pull_requests": []}, {}, {**fork_ci(gh)["workflow_run"], "event": "push"},
+                        {**fork_ci(gh)["workflow_run"], "head_repository": {"full_name": "eve/widget"}}):
         payload = {"repository": {"default_branch": "main"}, "workflow_run": run_payload}
         assert run_queue(tmp_path, monkeypatch, payload, gh, "workflow_run", waits) == 0
         assert gh.issues == [] and waits == [] and "re-sorted no PR" in capsys.readouterr().out
+
+
+def test_ci_on_a_pr_from_a_fork_is_followed_by_the_queue(tmp_path, monkeypatch, capsys):
+    """The review job re-sorts the fork's PR by the run's commit; the queue job finds it the same way, and rebuilds with its new label."""
+    gh, waits = on_a_fork(FakeGitHub(diff=DIFF, ci=CI.HELD)), []
+    run(tmp_path, monkeypatch, "pull_request_target", pr_payload(), gh)
+    run_queue(tmp_path, monkeypatch, pr_payload(), gh)
+    assert HELD in gh.issues[0]["body"]
+    gh.ci = CI.PASSED
+    assert run(tmp_path, monkeypatch, "workflow_run", fork_ci(gh), gh) == 0
+    assert HELD in gh.issues[0]["body"]  # the review job leaves the queue to the queue job
+    assert run_queue(tmp_path, monkeypatch, fork_ci(gh), gh, "workflow_run", waits) == 0
+    assert HELD not in gh.issues[0]["body"] and waits == [60] and "Triage queue updated." in capsys.readouterr().out
 
 
 def test_a_label_changing_command_is_followed_by_the_queue(tmp_path, monkeypatch):
@@ -514,16 +529,133 @@ def test_the_example_workflow_runs_gpt_oss_and_this_repo_reviews_itself_with_it(
         assert models == ["gpt-oss:20b"], path
 
 
-def test_ci_finishing_respects_the_skip_settings(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("fork", [False, True])
+def test_ci_finishing_respects_the_skip_settings(tmp_path, monkeypatch, capsys, fork):
     from stratum_open import action as action_module
 
-    gh = FakeGitHub(diff=DIFF, author="renovate[bot]")
+    gh = on_a_fork(FakeGitHub(diff=DIFF, author="renovate[bot]"))
     gh.files[(".stratum/policy.yml", "main")] = "review:\n  skip_bots: true\n"
     reviewed = []
     monkeypatch.setattr(action_module, "review_pull", lambda ctx, number: reviewed.append(number))
-    payload = {"repository": {"default_branch": "main"}, "workflow_run": {"pull_requests": [{"number": 7}]}}
+    payload = fork_ci(gh) if fork else {"repository": {"default_branch": "main"}, "workflow_run": {"pull_requests": [{"number": 7}]}}
     run(tmp_path, monkeypatch, "workflow_run", payload, gh)
     assert reviewed == [] and "review.skip_bots is on" in capsys.readouterr().out
+
+
+def on_a_fork(gh, number=7, repo="mallory/widget", branch="patch-1"):
+    gh.pulls[number]["head"].update(repo={"full_name": repo}, ref=branch)
+    return gh
+
+
+def fork_ci(gh, number=7, **changes):
+    """CI finishing on PR `number` from a fork, the way GitHub sends it: no `pull_requests`, and the run's commit, fork and branch."""
+    head = gh.pulls[number]["head"]
+    run = {"event": "pull_request", "status": "completed", "conclusion": "success", "pull_requests": [],
+           "head_sha": head["sha"], "head_branch": head["ref"], "head_repository": {"full_name": head["repo"]["full_name"]}, **changes}
+    return {"action": "completed", "repository": {"default_branch": "main"}, "workflow_run": run}
+
+
+HELD = "CI hasn't run: a maintainer needs to approve the workflows."
+
+
+def summary_of(gh, number=7):
+    return publish.find_summary(gh.issue_comments_[number], "stratum[bot]")["body"]
+
+
+@pytest.mark.parametrize("event", ["pull_request", "pull_request_target"])
+def test_ci_finishing_on_a_pr_from_a_fork_re_sorts_it_by_the_runs_commit(tmp_path, monkeypatch, capsys, event):
+    """#201: the PR from a first-time contributor's fork was sorted while its CI was held; the workflows ran and passed."""
+    gh = on_a_fork(FakeGitHub(diff=DIFF, ci=CI.HELD))
+    run(tmp_path, monkeypatch, "pull_request_target", pr_payload(), gh)
+    assert HELD in summary_of(gh)
+    gh.ci = CI.PASSED
+    model = FakeModel()
+    capsys.readouterr()
+    assert run(tmp_path, monkeypatch, "workflow_run", fork_ci(gh, event=event), gh, model) == 0
+    assert "PR #7: re-sorted as needs_work" in capsys.readouterr().out
+    assert HELD not in summary_of(gh) and "In its favour: CI passes." in summary_of(gh)
+    assert model.prompts == []  # the same commit: the model read it all last time
+
+
+@pytest.mark.parametrize("why, changes", [
+    ("another commit", {"head_sha": "b" * 40}),
+    ("another fork, with the same commit", {"head_repository": {"full_name": "eve/widget"}}),
+    ("another branch of the fork", {"head_branch": "main"}),
+    ("no fork named", {"head_repository": None}),
+    ("no branch named", {"head_branch": None}),
+])
+def test_a_ci_run_that_matches_no_open_pr_re_sorts_nothing_and_says_so(tmp_path, monkeypatch, capsys, why, changes):
+    gh = on_a_fork(FakeGitHub(diff=DIFF, ci=CI.HELD))
+    run(tmp_path, monkeypatch, "pull_request_target", pr_payload(), gh)
+    gh.ci = CI.PASSED
+    before = summary_of(gh)
+    capsys.readouterr()
+    assert run(tmp_path, monkeypatch, "workflow_run", fork_ci(gh, **changes), gh) == 0, why
+    out = capsys.readouterr().out
+    assert "so there's no PR to re-sort." in out and "re-sorted as" not in out, why
+    assert summary_of(gh) == before, why
+
+
+@pytest.mark.parametrize("event", ["push", "schedule", "workflow_dispatch", "merge_group", None])
+def test_a_ci_run_that_isnt_a_prs_lists_no_prs(tmp_path, monkeypatch, capsys, event):
+    """A push to the default branch, say: GitHub names the PRs of this repository's branches itself, so there's nothing to look up."""
+    listed = []
+
+    class Counting(FakeGitHub):
+        def open_pulls(self):
+            listed.append(1)
+            return super().open_pulls()
+
+    gh = on_a_fork(Counting(diff=DIFF))
+    payload = fork_ci(gh, event=event)
+    assert run(tmp_path, monkeypatch, "workflow_run", payload, gh) == 0
+    assert listed == [] and gh.issue_comments_[7] == [] and f"This CI run ({event or 'no event'}) names no PR" in capsys.readouterr().out
+
+
+def test_every_pr_from_the_runs_branch_is_re_sorted_and_no_other(tmp_path, monkeypatch, capsys):
+    """The fork's branch is in two PRs, into main and into a release branch: GitHub files both PRs' CI under the one commit,
+    so both read the same CI. Another fork's PR with the same commit has CI runs of its own, which re-sort it."""
+    gh = on_a_fork(FakeGitHub(diff=DIFF, ci=CI.HELD))
+    for number, repo in ((8, "mallory/widget"), (9, "eve/widget")):
+        gh.pulls[number] = {**gh.pulls[7], "number": number, "head": dict(gh.pulls[7]["head"]), "labels": []}
+        gh.issue_comments_[number], gh.labels[number] = [], []
+        on_a_fork(gh, number, repo)
+    for number in (7, 8, 9):
+        run(tmp_path, monkeypatch, "pull_request_target", {**pr_payload(), "pull_request": {"number": number}}, gh)
+    gh.ci = CI.PASSED
+    capsys.readouterr()
+    assert run(tmp_path, monkeypatch, "workflow_run", fork_ci(gh), gh) == 0
+    out = capsys.readouterr().out
+    assert "PR #7: re-sorted" in out and "PR #8: re-sorted" in out and "PR #9" not in out
+    assert HELD not in summary_of(gh, 7) and HELD not in summary_of(gh, 8) and HELD in summary_of(gh, 9)
+
+
+def test_ci_finishing_doesnt_start_a_review_of_a_forks_commit(tmp_path, monkeypatch, capsys):
+    """Only the PR's own event reviews a commit, so a workflow that holds an outside PR's review for approval still holds it."""
+    gh = on_a_fork(FakeGitHub(diff=DIFF))
+    model = FakeModel(model_answer())
+    unreviewed = "PR #7: Stratum hasn't reviewed this commit yet; that review reads the CI and sorts the PR."
+    assert run(tmp_path, monkeypatch, "workflow_run", fork_ci(gh), gh, model) == 0
+    assert unreviewed in capsys.readouterr().out
+    assert gh.issue_comments_[7] == [] and gh.reviews == [] and gh.checks == [] and model.prompts == []
+
+    # Reviewed at an older commit: the review of the new one is still to come.
+    run(tmp_path, monkeypatch, "pull_request_target", pr_payload(), gh)
+    gh.move_head(7, "c" * 40)
+    before, prompts = summary_of(gh), len(model.prompts)
+    capsys.readouterr()
+    assert run(tmp_path, monkeypatch, "workflow_run", fork_ci(gh), gh, model) == 0
+    assert unreviewed in capsys.readouterr().out and summary_of(gh) == before and len(model.prompts) == prompts
+
+    # Only Stratum's own summary says what it reviewed: a copy of it, edited to name the new commit, doesn't.
+    state = publish.State.decode(before)
+    state.head = "c" * 40
+    forged = publish.replace_state(before, state)
+    assert publish.State.decode(forged).head == "c" * 40
+    gh.issue_comments_[7].append({"id": 99, "body": forged, "user": {"login": "mallory", "type": "User"}})
+    capsys.readouterr()
+    assert run(tmp_path, monkeypatch, "workflow_run", fork_ci(gh), gh, model) == 0
+    assert unreviewed in capsys.readouterr().out and len(model.prompts) == prompts
 
 
 def test_the_runners_cpu_gets_small_calls_unless_the_policy_says_otherwise():

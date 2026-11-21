@@ -138,6 +138,21 @@ def test_superseded_review_is_not_published(gh):
     assert outcome.status == "superseded" and moving.issue_comments_[7] == []
 
 
+def test_a_review_of_the_commit_the_caller_checked_leaves_a_newer_head_alone(gh):
+    """`at`: a CI run re-sorts the commit it checked Stratum had reviewed. A push since is that commit's own review."""
+    review_pull(context(gh, FakeModel(model_answer())), 7)
+    before, model = gh.issue_comments_[7][0]["body"], FakeModel(model_answer())
+    gh.move_head(7, "b" * 40, FIXED)
+    gh.compare[("a" * 40, "b" * 40)] = ["app/users.py"]
+    diff = gh.pull_diff
+    gh.pull_diff = lambda number: pytest.fail("read the PR at a commit it wasn't asked to review")
+    outcome = review_pull(context(gh, model), 7, at="a" * 40)
+    assert outcome.status == "superseded" and outcome.note == "a newer commit arrived"
+    assert model.prompts == [] and gh.issue_comments_[7][0]["body"] == before
+    gh.pull_diff = diff
+    assert review_pull(context(gh, model), 7, at="b" * 40).status == "published"  # its own commit is reviewed as ever
+
+
 def test_model_down_still_publishes_the_checks(gh):
     from stratum_open.model import Reply
 

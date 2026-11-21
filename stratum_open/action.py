@@ -142,7 +142,8 @@ def _run(env: Mapping[str, str], event_name: str, payload: dict, gh: GitHub, loa
         # skip settings apply here too; review.events doesn't, since this isn't
         # a PR event. A PR from a fork isn't named in the event, so it's found
         # by the run's commit, fork and branch, and re-sorted only if Stratum
-        # has reviewed that commit.
+        # has reviewed that commit, and only at that commit (`at`): a push
+        # since then is the new commit's own review to start.
         run = payload.get("workflow_run") or {}
         named = [ref["number"] for ref in run.get("pull_requests") or [] if isinstance(ref, dict) and ref.get("number")]
         for pull in [gh.pull(number) for number in named] if named else _run_pulls(gh, run):
@@ -150,8 +151,11 @@ def _run(env: Mapping[str, str], event_name: str, payload: dict, gh: GitHub, loa
             if reason:
                 print(f"PR #{pull['number']}: {reason}")
                 continue
-            outcome = review_pull(ctx, pull["number"])
-            print(f"PR #{outcome.number}: re-sorted as {outcome.triage.key if outcome.triage else outcome.status}")
+            outcome = review_pull(ctx, pull["number"], at="" if named else pull["head"]["sha"])
+            if outcome.status == "superseded":
+                print(f"PR #{outcome.number}: {outcome.note}, so its own review sorts it.")
+            else:
+                print(f"PR #{outcome.number}: re-sorted as {outcome.triage.key if outcome.triage else outcome.status}")
     elif event_name in ("schedule", "workflow_dispatch"):
         if (env.get("STRATUM_TRIAGE_QUEUE") or "").strip().lower() == "false":
             # Its own job rebuilds it, in one concurrency group with the rebuilds after reviews.
@@ -324,6 +328,9 @@ def queue(env: Mapping[str, str] = os.environ) -> int:
         gh = GitHub(token, repo, api=env.get("GITHUB_API_URL") or API)
         run = payload.get("workflow_run") or {}
         # The event doesn't name a fork's PR: the review job found it by the run's commit, and so does this.
+        # A match rebuilds even when the review job left the PR alone (not reviewed at that commit, or
+        # the skip settings), as for a PR the event names. That's accepted: by now this job has joined
+        # the queue's group and cancelled any rebuild waiting there, so rebuilding is the safe side.
         if event_name == "workflow_run" and not run.get("pull_requests") and not _run_pulls(gh, run):
             print("This CI run re-sorted no PR, so the triage queue stays as it is.")
             return 0

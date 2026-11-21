@@ -169,14 +169,18 @@ def _by_fingerprint(ctx: Context, pull: dict) -> bool:
     return not ctx.fork_replies and from_fork(pull, ctx.gh.repo)
 
 
-def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = True, retry: bool = True) -> Outcome:
+def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = True, retry: bool = True, at: str = "") -> Outcome:
     """`retry=False` makes no model call at all (a redraw, like an ignore):
-    what the model hasn't read is left for the next review."""
+    what the model hasn't read is left for the next review. `at`: the commit
+    the caller checked; when the PR's head is another one by now, nothing is
+    read or posted, and the head's own review sorts it."""
     gh = ctx.gh
     pull = gh.pull(number)
     if pull.get("state") != "open":
         return Outcome(number, "skipped", note="the PR isn't open")
     head = pull["head"]["sha"]
+    if at and head != at:
+        return Outcome(number, "superseded", note="a newer commit arrived")
     files = parse_diff(gh.pull_diff(number))
     paths = [f.path for f in files]
     comments = gh.issue_comments(number)

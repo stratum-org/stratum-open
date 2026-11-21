@@ -1,3 +1,4 @@
+import copy
 import json
 import re
 from pathlib import Path
@@ -656,6 +657,29 @@ def test_ci_finishing_doesnt_start_a_review_of_a_forks_commit(tmp_path, monkeypa
     capsys.readouterr()
     assert run(tmp_path, monkeypatch, "workflow_run", fork_ci(gh), gh, model) == 0
     assert unreviewed in capsys.readouterr().out and len(model.prompts) == prompts
+
+
+def test_a_push_just_after_the_check_is_left_to_its_own_review(tmp_path, monkeypatch, capsys):
+    """The fork pushes between the PR list and the re-sort: what's re-sorted is the commit that was checked, so the new
+    one isn't reviewed here, without the approval a workflow may hold its own review for."""
+
+    class Pushed(FakeGitHub):
+        push = False
+
+        def open_pulls(self):
+            listed = copy.deepcopy(super().open_pulls())  # GitHub's answer, which a later push doesn't change
+            if self.push:
+                self.move_head(7, "d" * 40)
+            return listed
+
+    gh = on_a_fork(Pushed(diff=DIFF, ci=CI.HELD))
+    run(tmp_path, monkeypatch, "pull_request_target", pr_payload(), gh)
+    gh.ci, gh.push = CI.PASSED, True
+    before, reviews, checks, model = summary_of(gh), len(gh.reviews), len(gh.checks), FakeModel(model_answer())
+    capsys.readouterr()
+    assert run(tmp_path, monkeypatch, "workflow_run", fork_ci(gh), gh, model) == 0
+    assert "PR #7: a newer commit arrived, so its own review sorts it." in capsys.readouterr().out
+    assert summary_of(gh) == before and len(gh.reviews) == reviews and len(gh.checks) == checks and model.prompts == []
 
 
 def test_the_runners_cpu_gets_small_calls_unless_the_policy_says_otherwise():

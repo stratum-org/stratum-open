@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 
 import pytest
@@ -146,6 +147,35 @@ def test_replay_stops_when_the_rate_limit_runs_low_and_keeps_its_rows(fake_githu
     assert "| #8 R" in result.stdout and "| #7 " not in result.stdout
     assert fake_github.requests_to("GET", r"/pulls/7$") == []
     assert_no_traceback(result.stderr)
+
+
+def test_replay_stopped_by_the_rate_limit_says_how_far_it_got_and_when_it_resets(fake_github, fake_model, tmp_path):
+    closed_prs(fake_github)
+
+    def spend(request):  # the hour's requests run out as #7's diff is asked for
+        if request["path"].endswith("/pulls/7"):
+            fake_github.rate_limit(retry_after="0", times=0)
+
+    fake_github.on_request = spend
+    summary = tmp_path / "summary.md"
+    result = run_stratum(["replay", fake_github.repo, "--format", "markdown", "--out", str(summary)], env=env_for(fake_github, fake_model))
+    assert result.returncode == 2, result.stderr
+    assert_no_traceback(result.stderr)
+    said = re.search(r"Stopped after 1 of 50 PRs: GitHub's rate limit is used up\. It resets at \d\d:\d\d UTC, in 1 minute\.", result.stderr)
+    assert said, result.stderr
+    report = summary.read_text(encoding="utf-8")
+    assert f"**Stopped after 1 of 50 PRs.** {said.group().split(': ', 1)[1]}" in report and "Résumé → ✓" in report
+
+
+def test_replay_writes_an_html_page_whole_through_a_cp1252_pipe(fake_github, fake_model, tmp_path):
+    closed_prs(fake_github)
+    page = tmp_path / "replay.html"
+    result = run_stratum(["replay", fake_github.repo, "--format", "html", "--out", str(page)], env=env_for(fake_github, fake_model))
+    assert result.returncode == 0, result.stderr
+    assert_no_traceback(result.stderr)
+    assert result.stdout == ""
+    text = page.read_text(encoding="utf-8")
+    assert text.startswith("<!doctype html>") and "Résumé → ✓" in text and "<h2>Every PR (2, newest first)</h2>" in text
 
 
 def test_local_review_in_a_repo_with_a_planted_bug_and_emoji(fake_model, tmp_path):

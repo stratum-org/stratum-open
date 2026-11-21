@@ -59,7 +59,9 @@ def main(argv: list[str] | None = None) -> int:
     replay.add_argument("--last", type=int, default=50, metavar="N", help="how many closed PRs, newest first (default 50)")
     replay.add_argument("--state", choices=["merged", "closed", "all"], default="all", help="only merged PRs, only those closed without merging, or all (default)")
     replay.add_argument("--json", action="store_true", help="print the data as JSON instead of the report")
-    replay.add_argument("--out", metavar="FILE", help="also write the report to FILE, as Markdown")
+    replay.add_argument("--format", choices=["markdown", "html"],
+                        help="a report to share: Markdown for an issue, a discussion or a job summary, or one HTML page (default: the table, for the terminal)")
+    replay.add_argument("--out", metavar="FILE", help="also write the report to FILE (an HTML page goes only there)")
 
     queue = sub.add_parser("triage", help="the sorted queue of a repo's open PRs")
     queue.add_argument("repo", help="owner/name")
@@ -341,7 +343,8 @@ def _policy(args) -> int:
 def _replay(args) -> int:
     from stratum_open.replay import run
 
-    return run(args.repo, token=_token(), api=_api(), last=args.last, state=args.state, as_json=args.json, out=args.out)
+    return run(args.repo, token=_token(), api=_api(), last=args.last, state=args.state, as_json=args.json, out=args.out,
+               report_format=args.format)
 
 
 def _triage(args) -> int:

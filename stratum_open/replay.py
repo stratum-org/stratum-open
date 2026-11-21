@@ -25,17 +25,24 @@ then per PR one for the diff, three for CI (check runs, statuses, and, unless
 a check failed, the workflow runs, for one held for approval, plus one per
 workflow run started again after the PR closed), and one per file the checks
 read in full (workflows, manifests, Python files).
+
+The report comes as the table for the terminal (`render`), as Markdown to
+paste into an issue, a discussion or a job summary (`render_markdown`), or as
+one HTML page (`render_html`). All three draw the per-PR table from `COLUMNS`.
 """
 
 from __future__ import annotations
 
+import html
 import json
+import math
 import re
 import sys
+import time
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, NamedTuple
 
 import requests
 
@@ -46,7 +53,8 @@ from stratum_open.platform import CI
 from stratum_open.policy import POLICY_PATH, Policy
 from stratum_open.review import demention
 from stratum_open.runner import QUEUE_JOB, Context, check_pull, load_context_policy, skip_reason
-from stratum_open.triage import KEYS, PRFacts, label_for, triage
+from stratum_open.triage import COLORS, KEYS, PRFacts, label_for, triage
+from stratum_open.util import count
 
 MERGED, UNMERGED = "merged", "closed unmerged"
 OUTCOMES = (MERGED, UNMERGED)
@@ -67,21 +75,23 @@ _CLOSES = re.compile(
 class ReadOnlySession(requests.Session):
     """The replay's line to GitHub. It sends a GET and refuses anything else,
     so nothing under a replay can write to GitHub. It also counts the
-    requests and keeps the last rate-limit figure GitHub sent."""
+    requests and keeps the last rate-limit figures GitHub sent."""
 
     def __init__(self) -> None:
         super().__init__()
         self.calls = 0
         self.remaining: int | None = None  # requests left this hour, once GitHub has said
+        self.reset: int | None = None  # when the count starts again, in seconds since 1970 (UTC)
 
     def request(self, method, url, *args, **kwargs):
         if str(method).upper() != "GET":
             raise RuntimeError(f"replay only reads from GitHub: it won't send a {method} to {url}")
         self.calls += 1
         response = super().request(method, url, *args, **kwargs)
-        left = response.headers.get("X-RateLimit-Remaining", "")
+        left, reset = response.headers.get("X-RateLimit-Remaining", ""), response.headers.get("X-RateLimit-Reset", "")
         if left.isdigit() and response.headers.get("X-RateLimit-Resource", "core") == "core":
             self.remaining = int(left)
+            self.reset = int(reset) if reset.isdigit() else self.reset
         return response
 
 
@@ -104,6 +114,7 @@ class Row:
     deletions: int = 0
     files: int = 0
     note: str = ""
+    url: str = ""  # the PR's page on GitHub
 
 
 @dataclass
@@ -118,12 +129,19 @@ class Report:
 
 
 def replay(gh: GitHub, *, last: int = 50, state: str = "all", remaining: Callable[[], int | None] = lambda: None,
-           log: Callable[[str], None] = lambda line: None) -> Report:
+           resets: Callable[[], int | None] = lambda: None, log: Callable[[str], None] = lambda line: None) -> Report:
     """The last `last` closed PRs of `gh.repo`, newest first, each with the
     label it would have got. `remaining()` is the requests left this hour
-    (None when unknown): below `RESERVE` the replay stops and keeps its rows."""
-    default_branch = gh.repository().get("default_branch") or "main"
-    policy = load_context_policy(gh, default_branch)
+    (None when unknown): below `RESERVE` the replay stops and keeps its rows.
+    `resets()` is when that count starts again (seconds since 1970, or None),
+    which the report gives when GitHub's rate limit stops it."""
+    try:
+        default_branch = gh.repository().get("default_branch") or "main"
+        policy = load_context_policy(gh, default_branch)
+    except GitHubError as exc:
+        if not _rate_limited(exc):
+            raise  # no such repo, or the token can't see it: the command says which
+        return Report(gh.repo, Policy(), last, state, stopped=_stopped_by_limit(remaining(), resets()))
     for error in policy.errors:
         log(f"policy: {error} Using the defaults.")
     ctx = Context(gh=gh, policy=policy, model=None, bot="-", log=log)
@@ -134,7 +152,7 @@ def replay(gh: GitHub, *, last: int = 50, state: str = "all", remaining: Callabl
                 break
             left = remaining()
             if left is not None and left < RESERVE:
-                report.stopped = f"GitHub's rate limit is nearly used up ({left} requests left). It resets within the hour."
+                report.stopped = f"GitHub's rate limit is nearly used up ({left} requests left). {_resets(resets())}"
                 break
             if state != "all" and (state == "merged") != bool(pull.get("merged_at")):
                 continue
@@ -142,10 +160,28 @@ def replay(gh: GitHub, *, last: int = 50, state: str = "all", remaining: Callabl
             report.rows.append(row)
             log(f"#{row.number} {_label(policy, row.key)} ({row.outcome})")
     except GitHubError as exc:  # GitHub or the network gave out part-way: the rows so far are kept
-        report.stopped = f"{str(exc).rstrip('.')}."
+        report.stopped = _stopped_by_limit(remaining(), resets()) if _rate_limited(exc) else f"{str(exc).rstrip('.')}."
     except requests.RequestException as exc:
         report.stopped = f"Couldn't reach GitHub ({type(exc).__name__})."
     return report
+
+
+def _rate_limited(exc: GitHubError) -> bool:
+    return exc.rate_limited or exc.status == 429
+
+
+def _stopped_by_limit(left: int | None, reset: int | None) -> str:
+    """Why GitHub's rate limit stopped a replay, and when it can go on."""
+    if left:  # requests are left this hour: it was the limit on requests in a short time
+        return "GitHub's secondary rate limit stopped it: too many requests in a short time. Try again in a few minutes."
+    return f"GitHub's rate limit is used up. {_resets(reset)}"
+
+
+def _resets(reset: int | None, now: float | None = None) -> str:
+    if reset is None:
+        return "It resets within the hour."
+    minutes = max(1, math.ceil((reset - (time.time() if now is None else now)) / 60))
+    return f"It resets at {time.strftime('%H:%M', time.gmtime(reset))} UTC, in {count(minutes, 'minute')}."
 
 
 def _row(ctx: Context, pull: dict, default_branch: str) -> Row:
@@ -153,6 +189,7 @@ def _row(ctx: Context, pull: dict, default_branch: str) -> Row:
     row = Row(
         number=pull["number"], title=pull.get("title") or "", author=(pull.get("user") or {}).get("login", ""),
         outcome=MERGED if pull.get("merged_at") else UNMERGED, closed_at=pull.get("closed_at") or "", head=pull["head"]["sha"],
+        url=pull.get("html_url") or "",
     )
     # The labels it had then aren't known, so `review.skip_labels` is left out.
     row.note = skip_reason({**pull, "labels": []}, None, policy) or ""
@@ -241,44 +278,87 @@ def summary(report: Report) -> dict:
     }
 
 
+class Column(NamedTuple):
+    """A column of the per-PR table, after the PR itself. Every format draws
+    its table from `COLUMNS`, so a column added there shows in all three."""
+
+    heading: str
+    text: Callable[[Policy, Row], str]  # plain text, with code in backticks: each format escapes it its own way
+    limit: int = 240  # the most a Markdown cell keeps
+
+
+COLUMNS = [
+    Column("Outcome", lambda policy, row: row.outcome),
+    Column("Label", lambda policy, row: _label(policy, row.key)),
+    Column("Why", lambda policy, row: row.note or " ".join(row.reasons or row.evidence)),
+    Column("Checks' findings", lambda policy, row: ", ".join(f"`{rule}` {n}" for rule, n in row.findings.items()), limit=2000),
+]
+CAVEAT = ("No model reviewed these PRs and no author's track record was counted, so each label rests on the checks and the PR's "
+          "facts alone. The end of the report says what else a replay can't rebuild.")
+
+
+def disagreements(rows: list[Row]) -> list[Row]:
+    """The PRs whose label and outcome disagree, the surest label first:
+    marked ready but closed without merging, then marked needs work but
+    merged."""
+    ready = [row for row in rows if row.key == "ready" and row.outcome == UNMERGED]
+    work = [row for row in rows if row.key == "needs_work" and row.outcome == MERGED]
+    return sorted(ready, key=lambda row: -row.score) + sorted(work, key=lambda row: row.score)
+
+
 def render(report: Report) -> str:
-    """The report as Markdown: a row per PR, the table of label against
-    outcome, and the footer."""
-    policy, rows = report.policy, report.rows
-    one, many = {"all": ("closed PR", "closed PRs"), "merged": ("merged PR", "merged PRs"),
-                 "closed": ("PR closed without merging", "PRs closed without merging")}[report.state]
-    lines = [f"# Replay of {report.repo}", ""]
-    if report.stopped:
-        lines += [f"**Stopped after {len(rows)} of {report.asked} PRs.** {report.stopped}", ""]
-    if not rows:
-        return "\n".join(lines + ([] if report.stopped else [f"The repo has no {many}.", ""]))
-    lines += [
-        f"The last {len(rows)} {one if len(rows) == 1 else many}, newest first: what Stratum Open's checks and triage would have said "
-        "on each, beside what became of it. No model was run and nothing was posted."
-        + (f" {report.asked} were asked for; the repo has no more." if len(rows) < report.asked and not report.stopped else ""),
-        "",
-        "| PR | Outcome | Label | Why | Checks' findings |",
-        "| --- | --- | --- | --- | --- |",
-    ]
-    for row in rows:
-        why = row.note or " ".join(row.reasons or row.evidence)
-        found = ", ".join(f"`{rule}` {count}" for rule, count in row.findings.items())
-        lines.append(f"| #{row.number} {_cell(row.title, 80)} | {row.outcome} | {_label(policy, row.key)} | {_cell(why, 240)} | {found} |")
-
-    totals = summary(report)
-    lines += ["", "## Label against outcome", "", f"| Label | {MERGED} | {UNMERGED} | Total |", "| --- | ---: | ---: | ---: |"]
-    table = [(_label(policy, key), totals["labels"][key]) for key in KEYS]
-    if any(totals["not_reviewed"].values()):
-        table.append((_label(policy, ""), totals["not_reviewed"]))
-    table.append(("Total", {outcome: sum(1 for row in rows if row.outcome == outcome) for outcome in OUTCOMES}))
-    for name, counts in table:
-        lines.append(f"| {name} | {counts[MERGED]} | {counts[UNMERGED]} | {counts[MERGED] + counts[UNMERGED]} |")
-    lines += ["", f"{totals['with_findings']} of the {totals['replayed']} PRs replayed had at least one finding from the checks.", ""]
-
-    lines += ["## What this rests on", "", *notes(policy), ""]
-    if report.requests is not None:
-        lines += [f"GitHub requests: {report.requests}, about {report.requests / len(rows):.1f} per PR.", ""]
+    """The report for the terminal, as Markdown: a row per PR, the table of
+    label against outcome, and the footer."""
+    lines = _head(report)
+    if not report.rows:
+        return "\n".join(lines)
+    lines += [_intro(report), "", *_markdown_table(report.policy, report.rows, link=False), ""]
+    lines += ["## Label against outcome", "", *_markdown_counts(report), "", _with_findings(report), ""]
+    lines += ["## What this rests on", "", *notes(report.policy), "", *_request_count(report)]
     return "\n".join(lines)
+
+
+def render_markdown(report: Report) -> str:
+    """The report to share, in an issue, a discussion or a job summary: the
+    counts, the PRs whose label and outcome disagree, every PR (folded), and
+    what it rests on. No title in it can ping anyone or break a table."""
+    policy, rows = report.policy, report.rows
+    lines = _head(report)
+    if not rows:
+        return "\n".join(lines)
+    odd = disagreements(rows)
+    lines += [_intro(report), "", "## Label against outcome", "", *_markdown_counts(report), "", _with_findings(report), "", CAVEAT, ""]
+    lines += ["## Where the label and the outcome disagree", "", _disagreeing(policy, odd), ""]
+    lines += [*_markdown_table(policy, odd, link=True), ""] if odd else []
+    lines += ["## Every PR", "", "<details>", f"<summary>{count(len(rows), 'PR')}, newest first</summary>", "",
+              *_markdown_table(policy, rows, link=True), "", "</details>", ""]
+    lines += ["## What this rests on", "", *notes(policy), "", *_request_count(report)]
+    return "\n".join(lines)
+
+
+def render_html(report: Report) -> str:
+    """The report as one HTML page that loads nothing: its style is inline,
+    and it has no script and no image. All text in it is escaped."""
+    policy, rows = report.policy, report.rows
+    title = f"Replay of {report.repo}"
+    body = [f"<h1>{_html(title)}</h1>"]
+    if report.stopped:
+        body.append(f'<p class="stopped"><strong>Stopped after {len(rows)} of {report.asked} PRs.</strong> {_html(report.stopped)}</p>')
+    elif not rows:
+        body.append(f"<p>The repo has no {_kinds(report.state)[1]}.</p>")
+    if rows:
+        odd = disagreements(rows)
+        body += [f"<p>{_html(_intro(report))}</p>", "<h2>Label against outcome</h2>", _html_counts(report),
+                 f"<p>{_html(_with_findings(report))}</p>", f'<p class="caveat">{_html(CAVEAT)}</p>',
+                 "<h2>Where the label and the outcome disagree</h2>", f"<p>{_html(_disagreeing(policy, odd))}</p>"]
+        body += [_html_table(policy, odd)] if odd else []
+        body += [f"<h2>Every PR ({len(rows)}, newest first)</h2>", _html_table(policy, rows), "<h2>What this rests on</h2>", *_html_notes(policy)]
+        body += [f'<p class="muted">{_html(line)}</p>' for line in _request_count(report) if line]
+    return "\n".join([
+        "<!doctype html>", '<html lang="en">', "<head>", '<meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">', f"<title>{_html(title)}</title>",
+        f"<style>{_STYLE}</style>", "</head>", "<body>", "<main>", *body, "</main>", "</body>", "</html>", "",
+    ])
 
 
 def as_dict(report: Report) -> dict:
@@ -292,37 +372,222 @@ def as_dict(report: Report) -> dict:
     }
 
 
+# What every format says, before it's written as Markdown or HTML.
+
+
+def _kinds(state: str) -> tuple[str, str]:
+    return {"all": ("closed PR", "closed PRs"), "merged": ("merged PR", "merged PRs"),
+            "closed": ("PR closed without merging", "PRs closed without merging")}[state]
+
+
+def _head(report: Report) -> list[str]:
+    lines = [f"# Replay of {report.repo}", ""]
+    if report.stopped:
+        return lines + [f"**Stopped after {len(report.rows)} of {report.asked} PRs.** {report.stopped}", ""]
+    return lines + ([] if report.rows else [f"The repo has no {_kinds(report.state)[1]}.", ""])
+
+
+def _intro(report: Report) -> str:
+    rows = report.rows
+    one, many = _kinds(report.state)
+    return (f"The last {len(rows)} {one if len(rows) == 1 else many}, newest first: what Stratum Open's checks and triage would have said "
+            "on each, beside what became of it. No model was run and nothing was posted."
+            + (f" {report.asked} were asked for; the repo has no more." if len(rows) < report.asked and not report.stopped else ""))
+
+
+def _counts(report: Report) -> list[tuple[str | None, str, dict[str, int]]]:
+    """The table of label against outcome, a row each: the label's key (""
+    for the PRs not reviewed, None for the total), its name, and the PRs by
+    outcome."""
+    totals = summary(report)
+    table = [(key, _label(report.policy, key), totals["labels"][key]) for key in KEYS]
+    if any(totals["not_reviewed"].values()):
+        table.append(("", _label(report.policy, ""), totals["not_reviewed"]))
+    table.append((None, "Total", {outcome: sum(1 for row in report.rows if row.outcome == outcome) for outcome in OUTCOMES}))
+    return table
+
+
+def _with_findings(report: Report) -> str:
+    totals = summary(report)
+    return f"{totals['with_findings']} of the {totals['replayed']} PRs replayed had at least one finding from the checks."
+
+
+def _disagreeing(policy: Policy, odd: list[Row]) -> str:
+    ready, work = label_for(policy, "ready"), label_for(policy, "needs_work")
+    if not odd:
+        return f"None: no PR marked `{ready}` was closed without merging, and none marked `{work}` was merged."
+    return (f"Marked `{ready}` but closed without merging, or `{work}` but merged: the PRs to look at first, "
+            "the surest label first.")
+
+
+def _request_count(report: Report) -> list[str]:
+    if report.requests is None:
+        return []
+    return [f"GitHub requests: {report.requests}, about {report.requests / len(report.rows):.1f} per PR.", ""]
+
+
 def _label(policy: Policy, key: str) -> str:
     return label_for(policy, key) if key else "not reviewed"
 
 
+def _link(url: str) -> bool:
+    """A PR's page as GitHub gave it, fit to link to."""
+    return bool(re.fullmatch(r"https?://[^\s()<>\"'`\\]+", url))
+
+
+# Markdown
+
+
+def _markdown_table(policy: Policy, rows: list[Row], *, link: bool) -> list[str]:
+    lines = ["| PR | " + " | ".join(column.heading for column in COLUMNS) + " |", "| --- |" + " --- |" * len(COLUMNS)]
+    for row in rows:
+        pr = f"[#{row.number}]({row.url})" if link and _link(row.url) else f"#{row.number}"
+        cells = [f"{pr} {_cell(row.title, 80)}", *(_cell(column.text(policy, row), column.limit) for column in COLUMNS)]
+        lines.append(f"| {' | '.join(cells)} |")
+    return lines
+
+
+def _markdown_counts(report: Report) -> list[str]:
+    lines = [f"| Label | {MERGED} | {UNMERGED} | Total |", "| --- | ---: | ---: | ---: |"]
+    for _, name, counts in _counts(report):
+        lines.append(f"| {_cell(name, 80)} | {counts[MERGED]} | {counts[UNMERGED]} | {counts[MERGED] + counts[UNMERGED]} |")
+    return lines
+
+
 def _cell(text: str, limit: int) -> str:
     """Text for one table cell: one line of at most `limit` characters, with
-    nothing that ends the cell, leaves code open or pings anyone."""
+    nothing that ends the cell or the table, leaves code open or pings anyone."""
     text = " ".join(text.split())
     if len(text) > limit:
         text = text[:limit - 1].rstrip() + "…"
         text += "`" if text.count("`") % 2 else ""  # the cut fell inside a code span
-    return demention(text).replace("|", "\\|")
+    return _no_html(demention(text)).replace("|", "\\|")
+
+
+_TICKS = re.compile(r"`+")
+
+
+def _no_html(text: str) -> str:
+    """`text` with each `<` outside code written `&lt;`, so GitHub renders no
+    HTML from a PR's title: a `<details>` would fold the rest of the report,
+    and a `</table>` would end the table. Code spans are found as GitHub's
+    Markdown finds them, backslash escapes included, and keep their `<`,
+    which shows as itself there."""
+    out, at = [], 0
+    while at < len(text):
+        if text[at] == "\\":  # an escaped character can't open code, nor start a tag
+            out.append(text[at:at + 2])
+            at += 2
+        elif text[at] == "`":
+            run = _TICKS.match(text, at).group()
+            close = next((tick for tick in _TICKS.finditer(text, at + len(run)) if tick.group() == run), None)
+            end = close.end() if close else at + len(run)  # a run with no closer of its length is plain text
+            out.append(text[at:end])
+            at = end
+        else:
+            out.append("&lt;" if text[at] == "<" else text[at])
+            at += 1
+    return "".join(out)
+
+
+# HTML
+
+
+def _html(text: str) -> str:
+    """Text for the page: escaped, with code in backticks set as code."""
+    return re.sub(r"`([^`]+)`", r"<code>\1</code>", html.escape(text))
+
+
+def _html_table(policy: Policy, rows: list[Row]) -> str:
+    heads = "".join(f"<th>{_html(column.heading)}</th>" for column in COLUMNS)
+    lines = ['<div class="scroll"><table class="prs">', f"<thead><tr><th>PR</th>{heads}</tr></thead>", "<tbody>"]
+    for row in rows:
+        pr = f'<a href="{html.escape(row.url)}">#{row.number}</a>' if _link(row.url) else f"#{row.number}"
+        cells = "".join(f"<td>{_html(column.text(policy, row))}</td>" for column in COLUMNS)
+        lines.append(f"<tr><td>{pr} {_html(row.title)}</td>{cells}</tr>")
+    return "\n".join(lines + ["</tbody>", "</table></div>"])
+
+
+def _html_counts(report: Report) -> str:
+    lines = ['<table class="counts">', f"<thead><tr><th>Label</th><th>{MERGED}</th><th>{UNMERGED}</th><th>Total</th></tr></thead>", "<tbody>"]
+    for key, name, counts in _counts(report):
+        dot = f'<span class="dot" style="background:#{COLORS[key]}"></span>' if key in COLORS else ""
+        numbers = "".join(f"<td>{n}</td>" for n in (counts[MERGED], counts[UNMERGED], counts[MERGED] + counts[UNMERGED]))
+        lines.append(f'<tr{" class=total" if key is None else ""}><td>{dot}{_html(name)}</td>{numbers}</tr>')
+    return "\n".join(lines + ["</tbody>", "</table>"])
+
+
+def _html_notes(policy: Policy) -> list[str]:
+    """`notes`, whose lines are a heading ending in a colon, then its points."""
+    out: list[str] = []
+    for line in notes(policy):
+        if line.startswith("- "):
+            out.append(f"<li>{_html(line[2:])}</li>")
+        elif line:
+            out += ["</ul>"] if out else []
+            out += [f"<h3>{_html(line.rstrip(':'))}</h3>", "<ul>"]
+    return out + ["</ul>"]
+
+
+_STYLE = """
+:root { color-scheme: light dark; --text: #1f2328; --muted: #59636e; --page: #ffffff; --line: #d1d9e0; --shade: #f6f8fa;
+  --link: #0969da; --warn: #9a6700; --warn-shade: #fff8c5; }
+@media (prefers-color-scheme: dark) {
+  :root { --text: #f0f6fc; --muted: #9198a1; --page: #0d1117; --line: #3d444d; --shade: #151b23;
+    --link: #4493f8; --warn: #d29922; --warn-shade: #272115; }
+}
+body { margin: 0; background: var(--page); color: var(--text);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 32px 16px 48px; }
+h1 { font-size: 1.75em; margin: 0 0 12px; }
+h2 { font-size: 1.25em; margin: 36px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+h3 { font-size: 1em; margin: 20px 0 4px; }
+p, ul { margin: 8px 0; }
+li { margin: 2px 0; }
+a { color: var(--link); }
+code { font: 0.85em ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace; background: var(--shade);
+  padding: 0.1em 0.35em; border-radius: 4px; }
+.muted { color: var(--muted); }
+.caveat { color: var(--muted); max-width: 52em; }
+.stopped { border: 1px solid var(--warn); background: var(--warn-shade); padding: 8px 12px; border-radius: 6px; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; font-size: 14px; }
+th, td { border: 1px solid var(--line); padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: var(--shade); }
+table.prs { width: 100%; }
+table.prs td:first-child { min-width: 16em; }
+table.counts td + td, table.counts th + th { text-align: right; font-variant-numeric: tabular-nums; }
+tr.total td { font-weight: 600; }
+.dot { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 50%; margin-right: 0.5em; }
+"""
 
 
 # ── the command ──────────────────────────────────────────────────────────
 
 
-def run(repo: str, *, token: str, api: str, last: int, state: str, as_json: bool, out: str | None) -> int:
+FORMATS: dict[str | None, Callable[[Report], str]] = {None: render, "markdown": render_markdown, "html": render_html}
+
+
+def run(repo: str, *, token: str, api: str, last: int, state: str, as_json: bool, out: str | None,
+        report_format: str | None = None) -> int:
     """`stratum-open replay`: the report on stdout (JSON with `--json`), and
-    as Markdown in `out` when given. 2 when it stopped early; the rows it had
-    are still printed."""
+    in `out` when given, in `report_format` (None: the terminal's). An HTML
+    page written to `out` isn't printed too. 2 when it stopped early; the
+    rows it had are still in the report."""
     if last < 1:
         sys.exit("--last must be at least 1.")
     session = ReadOnlySession()
     gh = GitHub(token, repo, api=api, session=session)
-    report = replay(gh, last=last, state=state, remaining=lambda: session.remaining, log=lambda line: print(line, file=sys.stderr))
+    report = replay(gh, last=last, state=state, remaining=lambda: session.remaining, resets=lambda: session.reset,
+                    log=lambda line: print(line, file=sys.stderr))
     report.requests = session.calls
-    text = render(report)
+    text = FORMATS[report_format](report)
     if out:
         Path(out).write_text(text, encoding="utf-8")
-    print(json.dumps(as_dict(report), indent=2) if as_json else text)
+    if as_json:
+        print(json.dumps(as_dict(report), indent=2))
+    elif not (out and report_format == "html"):
+        print(text)
     if report.stopped:
         print(f"Stopped after {len(report.rows)} of {last} PRs: {report.stopped}", file=sys.stderr)
     return 2 if report.stopped else 0

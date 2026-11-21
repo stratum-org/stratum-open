@@ -27,6 +27,25 @@ your rules live in a file in your own repo. No telemetry, no license check.
 - **Checks that need no model** catch secrets, risky workflow changes, and packages that don't exist: a typo, or a name an AI invented that someone could register. Together they caught 98 of 99 planted risks, with no false alarms on 184 merged Python PRs.
 - **One triage label per PR**, with its reasons, and a queue of every open PR, cheapest to review first.
 
+## Try it on your repo
+
+See what Stratum would have said on your own last 50 closed PRs, before you install it: the label each would have got, beside whether it was merged. `replay` runs the checks and the triage only, so it needs no model, and it posts nothing. With [uv](https://docs.astral.sh/uv/) or [pipx](https://pipx.pypa.io/) there's nothing to install:
+
+```sh
+uvx stratum-open replay owner/repo
+pipx run stratum-open replay owner/repo
+```
+
+It needs a GitHub token, from `GITHUB_TOKEN` or the GitHub CLI (`gh auth login`): a PR takes about 5 API requests, and GitHub allows 60 an hour without a token. If GitHub's rate limit stops it anyway, it says how far it got and when the limit resets.
+
+From the release after 0.3.0, `--format markdown` gives a report to paste into an issue or a discussion, and `--format html --out replay.html` one page to open in a browser. Both start with the labels against what became of the PRs, then the PRs where the two disagree (marked ready but closed, or marked needs work but merged), and both say what a replay can't rebuild, such as the model's review.
+
+![The HTML report of a replay: a table of the labels against merged and closed PRs, then each PR with its label and the reasons for it](docs/images/replay.png)
+
+<sub>The HTML report for this repo's last 40 closed PRs.</sub>
+
+Or, with nothing to run on your machine: copy [examples/try-stratum.yml](examples/try-stratum.yml) to `.github/workflows/` in your repo and run it from the Actions tab. It replays your repo with the workflow's own read-only token and writes the Markdown report to the run's summary page, which anyone who can see the repo can open; on a private repo, it holds your PR titles. Nothing is posted to issues or PRs. Until the release after 0.3.0, the workflow installs Stratum Open from its main branch, since 0.3.0 has no `--format`.
+
 ## Quick start: the GitHub Action
 
 Copy [examples/stratum.yml](examples/stratum.yml) to `.github/workflows/stratum.yml`. That's all.

@@ -2,15 +2,23 @@
 reading GitHub and never writing to it."""
 
 import json
+import os
+import re
+import shlex
+import time
+from pathlib import Path
 
 import pytest
 import requests
+import yaml
 from fakes import FakeGitHub
 
-from stratum_open import cli
+from stratum_open import __version__, cli, replay as replay_module
 from stratum_open.github.api import GitHub, GitHubError
 from stratum_open.platform import CI
-from stratum_open.replay import RESERVE, ReadOnlySession, as_dict, closing_issues, render, replay
+from stratum_open.replay import (
+    RESERVE, Column, ReadOnlySession, as_dict, closing_issues, disagreements, render, render_html, render_markdown, replay,
+)
 
 CLEAN = """diff --git a/src/dates.py b/src/dates.py
 --- a/src/dates.py
@@ -80,7 +88,7 @@ class ClosedPRs(FakeGitHub):
         self.ci_asked: list[tuple[str, str]] = []
         self.ci_ignored: set[str] = set()
         self.ci_of: dict[str, CI] = {}  # a commit's CI, where it isn't `ci`
-        self.broken: dict[int, int] = {}  # a PR -> the status GitHub answers for its diff
+        self.broken: dict[int, int | GitHubError] = {}  # a PR -> the status GitHub answers for its diff, or the error
 
     def __getattribute__(self, name):
         value = super().__getattribute__(name)
@@ -92,7 +100,8 @@ class ClosedPRs(FakeGitHub):
     def pull_diff(self, number):
         self.diffed.append(number)
         if number in self.broken:
-            raise GitHubError(self.broken[number], "no")
+            broken = self.broken[number]
+            raise broken if isinstance(broken, GitHubError) else GitHubError(broken, "no")
         return super().pull_diff(number)
 
     def ci_state_at(self, sha, when, *, ignore):
@@ -109,7 +118,7 @@ def add(gh, number, *, merged=True, diff=CLEAN, body="Fixes #3. Strips the input
     gh.pulls[number] = {
         "number": number, "state": "closed", "draft": False, "title": f"Change {number}", "body": body, "user": {"login": "carol"},
         "head": {"sha": head_of(number), "ref": f"feature-{number}"}, "base": {"ref": "main"}, "labels": [],
-        "merged_at": CLOSED_AT if merged else None, "closed_at": CLOSED_AT, **fields,
+        "merged_at": CLOSED_AT if merged else None, "closed_at": CLOSED_AT, "html_url": f"https://github.com/acme/widget/pull/{number}", **fields,
     }
     gh.diffs[number] = diff
 
@@ -177,6 +186,7 @@ def test_the_replays_session_sends_a_get_and_nothing_else(monkeypatch):
         response = requests.Response()
         response.status_code = 200
         response.headers["X-RateLimit-Remaining"] = "4321"
+        response.headers["X-RateLimit-Reset"] = "1795275498"
         return response
 
     monkeypatch.setattr(requests.Session, "request", send)
@@ -187,7 +197,7 @@ def test_the_replays_session_sends_a_get_and_nothing_else(monkeypatch):
             session.request(method, "https://api.github.invalid/repos/acme/widget/issues/7")
     with pytest.raises(RuntimeError, match="replay only reads"):  # so the real client can't write through it either
         GitHub("t", "acme/widget", session=session).comment(7, "hello")
-    assert sent == ["GET"] and session.calls == 1 and session.remaining == 4321
+    assert sent == ["GET"] and session.calls == 1 and (session.remaining, session.reset) == (4321, 1795275498)
 
 
 def test_the_facts_are_those_of_the_prs_final_commit(gh):
@@ -330,3 +340,218 @@ def test_a_repo_with_nothing_closed_and_a_count_below_one(command, gh, capsys):
     assert "The repo has no closed PRs." in capsys.readouterr().out
     with pytest.raises(SystemExit, match="--last must be at least 1"):
         command("--last", "0")
+
+
+# ── the reports to share: --format markdown and --format html ────────────
+
+
+@pytest.fixture
+def disagreeing(gh):
+    """The three PRs, and one marked ready that was closed without merging.
+    #12 (a key in the code) was merged though marked needs work."""
+    add(gh, 14, merged=False)
+    return gh
+
+
+def test_the_markdown_report_leads_with_the_counts_and_where_label_and_outcome_disagree(disagreeing):
+    report = replay(disagreeing)
+    report.requests = 20
+    text = render_markdown(report)
+    sections = [line for line in text.splitlines() if line.startswith("#")]
+    assert sections == ["# Replay of acme/widget", "## Label against outcome", "## Where the label and the outcome disagree",
+                        "## Every PR", "## What this rests on"]
+    counts = text.split("## Label against outcome")[1].split("##")[0]
+    assert "| triage: ready | 1 | 1 | 2 |" in counts and "| triage: needs work | 1 | 0 | 1 |" in counts and "| Total | 2 | 2 | 4 |" in counts
+    # What a replay can't rebuild is said beside the numbers, not only at the end.
+    assert "No model reviewed these PRs and no author's track record was counted" in counts
+    odd = text.split("## Where the label and the outcome disagree")[1].split("##")[0]
+    assert "Marked `triage: ready` but closed without merging, or `triage: needs work` but merged" in odd
+    assert [line.split(")")[0] for line in odd.splitlines() if line.startswith("| [#")] == [
+        "| [#14](https://github.com/acme/widget/pull/14", "| [#12](https://github.com/acme/widget/pull/12",
+    ]
+    every = text.split("## Every PR")[1].split("## What this rests on")[0].strip()
+    assert every.startswith("<details>\n<summary>4 PRs, newest first</summary>") and every.endswith("</details>")
+    assert len([line for line in every.splitlines() if line.startswith("| [#")]) == 4
+    footer = text.split("## What this rests on")[1]
+    assert "The model's review." in footer and "`track_record.affects_triage` does nothing here." in footer
+    assert "GitHub requests: 20, about 5.0 per PR." in footer
+
+
+def test_disagreements_put_the_surest_label_first(disagreeing):
+    add(disagreeing, 15, merged=False)
+    rows = {row.number: row for row in replay(disagreeing).rows}
+    assert (rows[15].key, rows[14].key, rows[12].key, rows[11].key) == ("ready", "ready", "needs_work", "ready")
+    rows[11].key = "needs_work"  # merged, as if marked needs work
+    rows[15].score, rows[14].score, rows[12].score, rows[11].score = 1.0, 3.0, -2.0, -5.0
+    assert [row.number for row in disagreements(list(rows.values()))] == [14, 15, 11, 12]
+
+
+def test_with_no_disagreement_the_report_says_so(gh):
+    text = render_markdown(replay(gh, state="closed"))
+    assert "None: no PR marked `triage: ready` was closed without merging, and none marked `triage: needs work` was merged." in text
+
+
+HOSTILE = [
+    # (a PR's title, its Markdown cell)
+    ("Fix <details> folding", "Fix &lt;details> folding"),  # an open <details> would fold the rest of the report
+    ("End </td></tr></table> here", "End &lt;/td>&lt;/tr>&lt;/table> here"),
+    ("Hide <!-- the rest", "Hide &lt;!-- the rest"),
+    ("Make `Vec<T>` Send", "Make `Vec<T>` Send"),  # inside code, < shows as itself
+    ("\\`<b>`", "\\`&lt;b>`"),  # an escaped backtick opens no code
+    ("\\\\<b>", "\\\\&lt;b>"),  # an escaped backslash doesn't escape the <
+    ("`` a ` <b> ``", "`` a ` <b> ``"),
+    ("``a`` ` <b> ``", "``a`` ` &lt;b> ``"),  # neither the lone backtick nor the last pair has a closer of its length
+    ("a | b", "a \\| b"),
+    ("Thanks @mona, /stratum review", "Thanks `@mona`, `/stratum` review"),
+    ("line\nbreak\r\nand\ttab", "line break and tab"),
+]
+
+
+@pytest.mark.parametrize("title, cell", HOSTILE)
+def test_a_title_in_a_markdown_report_can_neither_break_the_table_nor_ping_anyone(gh, title, cell):
+    gh.pulls[11]["title"] = title
+    report = replay(gh)
+    for text in (render_markdown(report), render(report)):
+        line = [line for line in text.splitlines() if line.startswith(("| [#11]", "| #11 "))][-1]
+        assert line.split(" ", 2)[2].startswith(f"{cell} | merged | triage: ready |"), line
+
+
+def test_the_html_report_is_one_page_that_loads_nothing_and_escapes_every_title(disagreeing):
+    disagreeing.pulls[11]["title"] = 'Fix `<script>alert(1)</script>` & "quotes" @mona'
+    disagreeing.pulls[13]["html_url"] = "javascript:alert(1)"
+    page = render_html(replay(disagreeing))
+    assert page.startswith("<!doctype html>") and page.rstrip().endswith("</html>") and "<title>Replay of acme/widget</title>" in page
+    # Nothing to fetch: no script, no stylesheet, image or font to load.
+    assert not re.search(r"<script|<link|<img|<iframe|src=|@import|url\(", page, re.IGNORECASE)
+    assert "<code>&lt;script&gt;alert(1)&lt;/script&gt;</code> &amp; &quot;quotes&quot; @mona" in page
+    assert re.findall(r'href="([^"]*)"', page) == [f"https://github.com/acme/widget/pull/{n}" for n in (14, 12, 14, 12, 11)]
+    assert "<td>#13 Change 13</td>" in page  # its URL isn't a web page's, so it isn't a link
+    for said in ("<h2>Label against outcome</h2>", "No model reviewed these PRs", "<h2>Where the label and the outcome disagree</h2>",
+                 "<h2>Every PR (4, newest first)</h2>", "<h3>Left out, rather than guessed</h3>", "<li>The model&#x27;s review."):
+        assert said in page, said
+    assert '<span class="dot" style="background:#0e8a16"></span>triage: ready</td><td>1</td><td>1</td><td>2</td>' in page
+
+
+def test_a_column_added_to_columns_shows_in_every_format(gh, monkeypatch):
+    """A new fact about each PR takes one entry in COLUMNS, not a change to each format."""
+    monkeypatch.setattr(replay_module, "COLUMNS", [*replay_module.COLUMNS, Column("Agent", lambda policy, row: f"agent of #{row.number}")])
+    report = replay(gh)
+    assert "| PR | Outcome | Label | Why | Checks' findings | Agent |" in render(report)
+    assert "| CI passes. Linked to #3. Changes tests. |  | agent of #11 |" in render(report)
+    assert "| --- | --- | --- | --- | --- | --- |" in render_markdown(report) and "| agent of #12 |" in render_markdown(report)
+    assert "<th>Agent</th>" in render_html(report) and "<td>agent of #13</td>" in render_html(report)
+
+
+def test_format_chooses_what_is_printed_and_written(command, capsys, tmp_path):
+    page = tmp_path / "replay.html"
+    assert command("--format", "html", "--out", str(page)) == 0
+    assert capsys.readouterr().out == ""  # an HTML page goes only to the file
+    assert page.read_text(encoding="utf-8").startswith("<!doctype html>")
+    report = tmp_path / "replay.md"
+    assert command("--format", "markdown", "--out", str(report)) == 0
+    printed = capsys.readouterr().out
+    assert printed == report.read_text(encoding="utf-8") + "\n" and "## Where the label and the outcome disagree" in printed
+    assert command("--format", "html") == 0 and capsys.readouterr().out.startswith("<!doctype html>")
+    assert command("--format", "html", "--json") == 0 and json.loads(capsys.readouterr().out)["repo"] == "acme/widget"
+
+
+# ── rate limits ──────────────────────────────────────────────────────────
+
+
+def in_minutes(minutes: float) -> tuple[int, str]:
+    """A reset time `minutes` from now, and its time of day as the report gives it."""
+    reset = int(time.time() + minutes * 60)
+    return reset, time.strftime("%H:%M", time.gmtime(reset))
+
+
+def test_a_rate_limit_stops_the_replay_with_how_far_it_got_and_when_the_limit_resets(gh):
+    gh.broken[12] = GitHubError(403, "API rate limit exceeded for user ID 1", rate_limited=True)
+    reset, clock = in_minutes(23.5)
+    report = replay(gh, remaining=lambda: 0 if 12 in gh.diffed else 4000, resets=lambda: reset)
+    assert [row.number for row in report.rows] == [13]
+    assert report.stopped == f"GitHub's rate limit is used up. It resets at {clock} UTC, in 24 minutes."
+    assert render_markdown(report).startswith(f"# Replay of acme/widget\n\n**Stopped after 1 of 50 PRs.** {report.stopped}\n")
+    assert '<p class="stopped"><strong>Stopped after 1 of 50 PRs.</strong> GitHub&#x27;s rate limit is used up.' in render_html(report)
+
+
+def test_github_saying_slow_down_is_told_apart_from_the_hours_limit(gh):
+    gh.broken[12] = GitHubError(403, "You have exceeded a secondary rate limit", rate_limited=True)
+    report = replay(gh, remaining=lambda: 4000)  # requests are left this hour
+    assert report.stopped == ("GitHub's secondary rate limit stopped it: too many requests in a short time. "
+                              "Try again in a few minutes.")
+    gh.broken[12] = GitHubError(429, "Too many requests")
+    assert replay(gh).stopped == "GitHub's rate limit is used up. It resets within the hour."
+
+
+def test_a_rate_limit_before_the_first_pr_is_a_report_too(gh):
+    def limited():
+        raise GitHubError(403, "API rate limit exceeded for user ID 1", rate_limited=True)
+
+    gh.repository = limited
+    reset, clock = in_minutes(1)
+    report = replay(gh, remaining=lambda: 0, resets=lambda: reset)
+    assert report.rows == [] and report.stopped == f"GitHub's rate limit is used up. It resets at {clock} UTC, in 1 minute."
+    assert render_markdown(report) == f"# Replay of acme/widget\n\n**Stopped after 0 of 50 PRs.** {report.stopped}\n"
+
+    def missing():
+        raise GitHubError(404, "Not Found")
+
+    gh.repository = missing  # any other refusal is the command's to explain
+    with pytest.raises(GitHubError):
+        replay(gh)
+
+
+def test_stopping_before_the_limit_runs_out_says_when_it_resets(gh):
+    reset, clock = in_minutes(59.2)
+    left = iter([5000, RESERVE - 1])
+    report = replay(gh, remaining=lambda: next(left), resets=lambda: reset)
+    assert report.stopped == f"GitHub's rate limit is nearly used up ({RESERVE - 1} requests left). It resets at {clock} UTC, in 60 minutes."
+
+
+# ── examples/try-stratum.yml ─────────────────────────────────────────────
+
+TRY = Path(__file__).parent.parent / "examples" / "try-stratum.yml"
+
+
+def try_workflow() -> dict:
+    return yaml.safe_load(TRY.read_text(encoding="utf-8"))
+
+
+def try_steps() -> list[dict]:
+    return [step for job in try_workflow()["jobs"].values() for step in job["steps"]]
+
+
+def test_the_try_workflow_runs_by_hand_reads_only_and_pins_its_actions():
+    flow = try_workflow()
+    assert list(flow.get("on", flow.get(True))) == ["workflow_dispatch"]  # YAML 1.1 reads a bare `on` as true
+    assert set(flow["permissions"].values()) == {"read"} and all("permissions" not in job for job in flow["jobs"].values())
+    assert all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", step["uses"]) for step in try_steps() if "uses" in step)
+    assert "secrets." not in TRY.read_text(encoding="utf-8")
+    runs = [step["run"] for step in try_steps() if "run" in step]
+    assert len(runs) == 2 and not any(re.search(r"\bgh\b|\bcurl\b|--post", run) for run in runs)  # it posts nothing
+
+
+def test_the_try_workflow_installs_a_stratum_open_that_has_replay_format():
+    """`replay --format` isn't in 0.3.0, the latest release, so the example
+    installs the main branch. The release after it bumps the version, which
+    fails this test: that release's commit pins the example to it
+    ("stratum-open==<version>"), and changes this test to match."""
+    [install] = [step["run"] for step in try_steps() if "pip install" in step.get("run", "")]
+    assert __version__ == "0.3.0"
+    assert install.endswith('"stratum-open @ git+https://github.com/stratum-org/stratum-open@main"')
+
+
+def test_the_try_workflow_writes_the_markdown_report_to_the_job_summary(command, tmp_path, monkeypatch):
+    [step] = [step for step in try_steps() if "stratum-open replay" in step.get("run", "")]
+    assert step["env"] == {"GITHUB_TOKEN": "${{ github.token }}", "LAST": "${{ inputs.last }}"}
+    summary = tmp_path / "summary.md"
+    summary.write_text("", encoding="utf-8")
+    flow = try_workflow()
+    last = flow.get("on", flow.get(True))["workflow_dispatch"]["inputs"]["last"]["default"]
+    for name, value in {"GITHUB_REPOSITORY": "acme/widget", "GITHUB_STEP_SUMMARY": str(summary), "LAST": str(last)}.items():
+        monkeypatch.setenv(name, value)
+    program, *args = [os.path.expandvars(word) for word in shlex.split(step["run"])]
+    assert program == "stratum-open" and cli.main(args) == 0
+    report = summary.read_text(encoding="utf-8")
+    assert report.startswith("# Replay of acme/widget") and "## Where the label and the outcome disagree" in report
+    assert "The last 3 closed PRs" in report and "50 were asked for; the repo has no more." in report

@@ -14,13 +14,15 @@ import re
 import sqlite3
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import requests
 
 from stratum_open import __version__
 from stratum_open.diff import parse_diff
-from stratum_open.findings import Finding
+from stratum_open.findings import SEVERITIES, Finding, severity_rank
 from stratum_open.github.api import API, GitHubError
 from stratum_open.model import model_from_policy
 from stratum_open.policy import POLICY_PATH, Policy, parse_policy
@@ -29,6 +31,7 @@ from stratum_open.track_record import author_identity, build_records, describe_s
 
 _PR = re.compile(r"(?:https://github\.com/)?([\w.-]+/[\w.-]+)(?:/pull/|#)(\d+)/?$")
 MAX_LOCAL_CONTENTS = 40  # files whose full text a local review reads, once it has read what a review on GitHub would
+STAGED_LOOKUP_SECONDS = 3.0  # all of a staged review's registry lookups: a commit made offline waits no longer
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,6 +42,9 @@ def main(argv: list[str] | None = None) -> int:
     review = sub.add_parser("review", help="review a GitHub PR, or your local changes")
     review.add_argument("target", nargs="?", help="a PR: https://github.com/owner/repo/pull/12 or owner/repo#12")
     review.add_argument("--local", metavar="BASE", nargs="?", const="origin/HEAD", help="review this checkout's changes since BASE (default origin/HEAD)")
+    review.add_argument("--staged", action="store_true", help="review what's staged for the next commit, not the branch; one line per finding")
+    review.add_argument("--fail-on", choices=SEVERITIES, default="critical", metavar="SEVERITY",
+                        help="with --local or --staged: exit 1 on a finding this severe or worse: low, medium, high or critical (the default)")
     review.add_argument("--post", action="store_true", help="publish the review on the PR (default: print it only)")
     review.add_argument("--full", action="store_true", help="review the whole PR, not only what changed since the last review")
     review.add_argument("--checkout", help="a checkout of the PR's default branch, for history-based notes")
@@ -98,7 +104,7 @@ def main(argv: list[str] | None = None) -> int:
         "data": _data, "serve": _serve, "action": _action, "needs-model": _needs_model,
         "replay": _replay, "gitlab": _gitlab, "mcp": _mcp,
     }[args.command]
-    # Exit codes: 0 done; 1 a usage problem, or `review --local` found something critical;
+    # Exit codes: 0 done; 1 a usage problem, or `review --local` found something at --fail-on or worse (critical by default);
     # 2 GitHub or the network refused (the message says what); 130 stopped with Ctrl-C.
     try:
         return command(args)
@@ -146,8 +152,10 @@ def _host(exc: BaseException) -> str:
 
 
 def _review(args) -> int:
-    if args.local is not None or not args.target:
-        return _review_local(args, args.local or "origin/HEAD")
+    if args.staged and (args.local is not None or args.target):
+        sys.exit("--staged reviews what's staged against HEAD, so it takes neither --local nor a PR.")
+    if args.local is not None or args.staged or not args.target:
+        return _review_local(args, "HEAD" if args.staged else args.local or "origin/HEAD")
     match = _PR.match(args.target)
     if not match:
         sys.exit(f"Not a PR: {args.target}. Use https://github.com/owner/repo/pull/12 or owner/repo#12.")
@@ -178,12 +186,13 @@ def _review(args) -> int:
 
 def _review_local(args, base: str) -> int:
     """Review `git diff BASE...HEAD` here, with the policy as it is on BASE,
-    through the same engine call as a review on GitHub."""
-    local = local_review(base, make_model=None if args.no_model else model_from_policy)
+    through the same engine call as a review on GitHub; with `--staged`, what's
+    staged (see `local_review`), one line per finding."""
+    local = local_review(base, make_model=None if args.no_model else model_from_policy, staged=args.staged)
     if local is None:
-        print(f"No changes between {base} and HEAD.")
+        print("Nothing is staged." if args.staged else f"No changes between {base} and HEAD.")
         return 0
-    result, _, _, model = local
+    result, files, _, model = local
     if model is not None:
         print(f"Profile: {result.profile} ({result.profile_why}).", file=sys.stderr)
         if result.model_settings:
@@ -192,20 +201,27 @@ def _review_local(args, base: str) -> int:
             print("The model didn't answer: " + "; ".join(sorted({c['error'] for c in result.review.calls if c.get('error')})), file=sys.stderr)
         elif result.review is not None and result.review.summary:
             print(f"What this changes: {result.review.summary}\n")
-    _print_findings(result.findings)
-    for note in result.check_notes:
+    (_print_short if args.staged else _print_findings)(result.findings)
+    for note in result.check_notes + (_missing_tools(result.policy, files) if args.staged else []):
         print(note, file=sys.stderr)
     _write_json(args.json, result.findings)
-    return 1 if any(f.severity == "critical" for f in result.findings) else 0
+    return 1 if any(severity_rank(f.severity) >= severity_rank(args.fail_on) for f in result.findings) else 0
 
 
-def local_review(base: str, *, make_model=model_from_policy, no_build: str = ""):
+def local_review(base: str, *, make_model=model_from_policy, no_build: str = "", staged: bool = False):
     """`review --local`'s review of this checkout, which `stratum-open mcp`
     runs too: (the engine's result, the files, the text read of them, the
     model), or None when nothing changed. `make_model(policy)` makes the
     model from the policy on BASE; None runs the checks only. `no_build`,
     when given, is why the checks that build the code (`checks.go_vet`,
-    `checks.clippy`) don't run. Nothing is printed to stdout."""
+    `checks.clippy`) don't run. Nothing is printed to stdout.
+
+    `staged` (`review --staged`, with BASE HEAD): the change is what's staged,
+    `git diff --cached`, with the files as the index holds them and no commit
+    message yet, so a pre-commit hook sees what the commit will hold. Its
+    registry lookups share STAGED_LOOKUP_SECONDS, nothing is built, and the
+    name checks run only when the working tree's Python files are what's
+    staged; the result's `check_notes` say what that left out."""
     from stratum_open.checks.common import looks_binary
     from stratum_open.checks.dependencies import PackageLookup
     from stratum_open.checks.tools import Worktree
@@ -220,9 +236,10 @@ def local_review(base: str, *, make_model=model_from_policy, no_build: str = "")
         # diff tool, textconv filters, other prefixes than a/ and b/, paths
         # relative to a subfolder, and the number of context lines.
         text = _git(".", "diff", "--no-color", "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/",
-                    "--no-relative", "-U3", "--find-renames", f"{base}...HEAD")
+                    "--no-relative", "-U3", "--find-renames", "--cached" if staged else f"{base}...HEAD")
     except subprocess.CalledProcessError as exc:
-        sys.exit(f"git couldn't compare {base} with HEAD: {(exc.stderr or '').strip() or 'is this a git repo, and does that branch exist?'}")
+        what = "read what's staged" if staged else f"compare {base} with HEAD"
+        sys.exit(f"git couldn't {what}: {(exc.stderr or '').strip() or 'is this a git repo, and does that branch exist?'}")
     files = parse_diff(text)
     if not files:
         return None
@@ -235,7 +252,7 @@ def local_review(base: str, *, make_model=model_from_policy, no_build: str = "")
     # limits left out (they cap API calls, and `git show` makes none), then
     # the other changed files.
     def read(file, max_bytes=None):
-        text = _git_or_none(".", "show", f"HEAD:{file.path}")
+        text = _git_or_none(".", "show", f"{'' if staged else 'HEAD'}:{file.path}")  # `:path` is the index's copy
         return None if text is None or (max_bytes is not None and len(text.encode("utf-8")) > max_bytes) else text
 
     fetch, moved = to_read(policy, files)
@@ -252,21 +269,118 @@ def local_review(base: str, *, make_model=model_from_policy, no_build: str = "")
         elif text is not None:
             contents[file.path] = text
     top = (_git_or_none(".", "rev-parse", "--show-toplevel") or ".").strip()
+    lookup = PackageLookup() if policy.dependencies.registry_lookup else None
+    if staged and lookup is not None:
+        lookup = _LookupBudget(lookup)
+    names_dir, notes = _name_checks_dir(policy, top) if staged else (top, [])
     result = analyze(
-        worktree=Worktree(top, no_build) if no_build else _local_worktree(policy, files, top),
-        title=_git(".", "log", "-1", "--format=%s").strip(), description=_git(".", "log", "-1", "--format=%b").strip(),
-        files=files, policy=policy, model=model, contents=contents or None,
-        lookup=PackageLookup() if policy.dependencies.registry_lookup else None,
+        worktree=Worktree(top, no_build) if no_build else _local_worktree(policy, files, top, staged=staged),
+        title="" if staged else _git(".", "log", "-1", "--format=%s").strip(),
+        description="" if staged else _git(".", "log", "-1", "--format=%b").strip(),
+        files=files, policy=policy, model=model, contents=contents or None, lookup=lookup,
         # The working tree is HEAD, the change itself: the module baseline comes from where it branched off.
         extra_findings=boundary_findings(files, policy, ".", ref=(_git_or_none(".", "merge-base", base, "HEAD") or base).strip())
         # ... while a name is looked for in the modules as they'll be, and the working tree is that already.
-        + unknown_name_findings(files, policy, top, contents=contents, applied=True)
-        + removed_name_findings(files, policy, top, contents=contents, applied=True),
+        + unknown_name_findings(files, policy, names_dir, contents=contents, applied=True)
+        + removed_name_findings(files, policy, names_dir, contents=contents, applied=True),
     )
+    result.check_notes += notes + (lookup.notes() if isinstance(lookup, _LookupBudget) else [])
     return result, files, contents, model
 
 
-def _local_worktree(policy: Policy, files: list, top: str):
+def _print_short(findings: list[Finding]) -> None:
+    """One line per finding, `path:line: severity rule title`, as linters
+    print them: a commit hook's output is read in a terminal, often in full."""
+    for f in findings:
+        where = f"{f.path}:{f.line_start}: " if f.path and f.line_start else (f"{f.path}: " if f.path else "")
+        print(f"{where}{f.severity} {f.rule} {f.title}")
+
+
+def _missing_tools(policy: Policy, files: list) -> list[str]:
+    """One line when Bandit, or Ruff with `checks.ruff` on, would have read a
+    staged Python file but isn't installed. A pre-commit hook runs in its own
+    environment, which has neither unless the hook's additional_dependencies
+    name them; the other checks don't need them, so this doesn't fail."""
+    from stratum_open.checks import bandit, ruff
+
+    if not any(f.status != "deleted" and not f.binary and f.added() and bandit.scope(f.path) for f in files):
+        return []
+    missing = [name for name, tool, on in (("Bandit", bandit, True), ("Ruff", ruff, policy.checks.ruff)) if on and not tool.available()]
+    if not missing:
+        return []
+    packages = " and ".join(f"`{name.lower()}`" for name in missing)
+    return [f"{' and '.join(missing)} didn't run on the staged Python files: not installed here. "
+            f"In the pre-commit hook, add {packages} to its additional_dependencies."]
+
+
+class _LookupBudget:
+    """A staged review's registry lookups, STAGED_LOOKUP_SECONDS in all from
+    the first. A `PackageLookup` waits up to 10 s a request, and that timeout
+    doesn't cover DNS, so offline, or behind a proxy that never answers, a
+    commit adding a few dependencies would wait a minute. Each lookup runs in
+    a thread given what's left of the budget; once it's spent, the rest aren't
+    asked. What comes back unknown, for that or any other reason, is counted
+    for one note."""
+
+    def __init__(self, lookup):
+        self.lookup = lookup
+        self.seconds = STAGED_LOOKUP_SECONDS
+        self.deadline: float | None = None
+        self.unknown = 0
+
+    def _within(self, ask, otherwise):
+        self.deadline = self.deadline or time.monotonic() + self.seconds
+        left = self.deadline - time.monotonic()
+        answer = []
+        if left > 0:
+            self.lookup.timeout = left  # so a request that does time out ends with the budget, not after it
+            worker = threading.Thread(target=lambda: answer.append(ask()), daemon=True)
+            worker.start()
+            worker.join(left)
+        return answer[0] if answer else otherwise
+
+    def info(self, ecosystem: str, name: str):
+        info = self._within(lambda: self.lookup.info(ecosystem, name), None)
+        self.unknown += info is None
+        return info
+
+    def advisories(self, pins):
+        return self._within(lambda: self.lookup.advisories(pins), {})
+
+    def notes(self) -> list[str]:
+        if not self.unknown:
+            return []
+        return [f"{self.unknown} new {'dependency' if self.unknown == 1 else 'dependencies'} couldn't be looked up at the registry "
+                f"(no network, or past the {self.seconds:g} s a staged review gives the lookups). The other checks ran."]
+
+
+def _name_checks_dir(policy: Policy, top: str) -> tuple[str | None, list[str]]:
+    """Where a staged review's name checks (`checks.unknown_names`,
+    `checks.removed_names`) read the modules a change doesn't touch: the
+    working tree, which is what's staged only if no Python file differs from
+    the index. pre-commit stashes unstaged edits before a hook runs, but not
+    files git doesn't track. A module that differs could hide a broken import,
+    or report one that isn't, so then the checks don't run (None), and the
+    note says why."""
+    if not (policy.checks.unknown_names or policy.checks.removed_names):
+        return top, []
+    status = _git_or_none(top, "status", "--porcelain", "-z", "--no-renames", "--untracked-files=all", "--", "*.py")
+    differ = [entry[3:] for entry in (status or "").split("\0") if len(entry) > 3 and entry[1] != " "]
+    if status is not None and not differ:
+        return top, []
+    from stratum_open.checks.tools import listed
+
+    checks = " and ".join(f"checks.{name}" for name in ("unknown_names", "removed_names") if getattr(policy.checks, name))
+    if status is None:
+        return None, [f"{checks} didn't run: Stratum couldn't read `git status`, so it can't tell whether the working tree, "
+                      "where they read the other modules, is what's staged."]
+    one = len(differ) == 1
+    return None, [f"{checks} didn't run: they read the other modules from the working tree, where {listed(differ)} "
+                  f"{'differs' if one else 'differ'} from what's staged. Stage or stash {'it' if one else 'them'} "
+                  "(new files too), and run it again."]
+
+
+def _local_worktree(policy: Policy, files: list, top: str, staged: bool = False):
     """This checkout, for the checks that build the code (`checks.go_vet`,
     `checks.clippy`). It builds here as `go build` or `cargo build` would,
     running the code, so a line on stderr says so first: a branch checked out
@@ -281,6 +395,9 @@ def _local_worktree(policy: Policy, files: list, top: str):
         return None
     if not any(f.status != "deleted" and (go_vet.wanted(f) or clippy.wanted(f)) for f in files):
         return Worktree(top)  # nothing to build: the checks say nothing either way
+    if staged:
+        return Worktree(top, "a review of what's staged doesn't build the code, since a build reads the working tree, not the index, "
+                             "and takes longer than a commit should wait. `stratum-open review --local` runs it once it's committed.")
     status = _git_or_none(top, "status", "--porcelain", "--no-renames", "--untracked-files=all")
     dirty = [line[3:] for line in (status or "").splitlines() if len(line) > 3]
     if status is None:

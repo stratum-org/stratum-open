@@ -599,6 +599,14 @@ def test_review_local_refuses_a_checkout_with_uncommitted_changes(tmp_path, caps
     assert capsys.readouterr().err == ""  # nothing built, so no warning
 
 
+def test_review_staged_builds_nothing(tmp_path, capsys):
+    root = go_module(tmp_path)
+    committed(root)
+    refused = cli._local_worktree(GO, parse_diff(new_file("a.go", GO_FILE)), str(root), staged=True).refused
+    assert refused.startswith("a review of what's staged doesn't build the code")
+    assert capsys.readouterr().err == ""
+
+
 def test_a_tool_past_its_time_limit_is_stopped_with_what_it_started(tmp_path):
     marker = tmp_path / "child-still-running"
     child = f"import time, pathlib; time.sleep(3); pathlib.Path({str(marker)!r}).write_text('x')"

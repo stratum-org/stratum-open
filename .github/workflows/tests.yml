@@ -48,4 +48,9 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install -e ".[test,app,bandit,ruff,js,mcp]"
+      - name: pre-commit, for the hook's try-repo test, on one Python only (it pip installs the hook from PyPI)
+        if: matrix.python == '3.12'
+        run: |
+          pip install pre-commit
+          echo "STRATUM_TEST_PRE_COMMIT=1" >> "$GITHUB_ENV"
       - run: pytest tests/e2e -m "not live" -q

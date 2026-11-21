@@ -203,6 +203,7 @@ Gitea and Forgejo aren't supported yet; [docs/gitea-forgejo.md](docs/gitea-forge
 
 **CLI.** `pip install stratum-open` for:
 - `stratum-open review --local main`: review your branch against `main` before you open a PR. Handy for contributors too.
+- `stratum-open review --staged`: review what's staged for the next commit, one line per finding. `--fail-on high` (with `--local` too) exits 1 on a high or critical finding; the default is critical.
 - `stratum-open review owner/repo#123`: a dry run on any PR; `--post` publishes it.
 - `stratum-open record <login>`: a record from a local clone's history.
 - `stratum-open policy check`: validate a policy file.
@@ -259,6 +260,26 @@ A finding comes back as JSON: `fingerprint`, `rule`, `severity`, `category`, `so
 **Any other client** that starts a server on stdio: the command is `stratum-open mcp --repo /path/to/your/checkout`. It speaks MCP on stdin and stdout and logs on stderr ([the stdio transport](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio)). Many clients take the same `mcpServers` shape as Cursor.
 
 If `stratum-open` is installed in a virtual environment, give its full path as `command`. A client may start the server with only a few of your environment variables, so put the ones it needs in the entry's `env`: `STRATUM_MODEL_ENDPOINT` and `STRATUM_MODEL_NAME` for another model than the policy's, and for `triage_pr` the token, as `"GITHUB_TOKEN": "${env:GITHUB_TOKEN}"` in VS Code and Cursor, never the token itself in a file you commit. Stratum's agent-files check flags a PR that changes `.vscode/mcp.json`: an MCP server added to a repo runs in every contributor's agent, so a maintainer should read it.
+
+**pre-commit hook.** The checks that need no model, on what you've staged, before each commit: a leaked secret, a `pull_request_target` workflow that runs untrusted code or a typo-squatted dependency is caught before it's pushed. Add to your `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/stratum-org/stratum-open
+    rev: vX.Y.Z  # the first release after 0.3.0: v0.3.0 has no hook
+    hooks:
+      - id: stratum-open-checks
+        additional_dependencies: [bandit]  # optional: Bandit too (and `ruff`, with checks.ruff on)
+```
+
+- **It needs the first release after 0.3.0**, since `v0.3.0` doesn't have the hook. Until that release is out, `rev:` can be the commit of `main` that added it, or a later one.
+- It runs `stratum-open review --staged --no-model --fail-on high`: the change is what's staged (`git diff --cached`, the files as the index holds them), the policy is `.stratum/policy.yml` as it is on HEAD, and a high or critical finding stops the commit. `git commit --no-verify` skips it.
+- Bandit and Ruff run only when they're installed in the hook's environment, through `additional_dependencies`. Without them, the output says they didn't run (pre-commit shows it when the hook fails, or with `verbose: true`), and the commit isn't stopped for it. go vet and Clippy don't run, since they build the code.
+- When a commit adds a dependency, the registry is asked about it, as on a PR (`dependencies.registry_lookup`), with 3 s for all of the commit's lookups. Offline, or past those 3 s, the rest go unchecked and a line says how many; look-alikes of popular packages are still found, since that list comes with Stratum.
+- With `checks.unknown_names` or `checks.removed_names` on, the modules a commit doesn't touch are read from the working tree, so those two don't run when a Python file there differs from what's staged: a new file you haven't added, for example. pre-commit stashes unstaged edits first, but not new files.
+- It needs Python 3.11 or newer: set `language_version` on the hook if pre-commit runs on an older one.
+- It reads what's staged, so `pre-commit run --all-files` with nothing staged has nothing to check.
+- On Windows, a few paths in this repository are 165 characters long, which fits under pre-commit's default cache folder; if `PRE_COMMIT_HOME` is a long path, git needs `core.longpaths` to check the hook out.
 
 ## Models
 

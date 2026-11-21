@@ -1,0 +1,10 @@
+# The hook for pre-commit (https://pre-commit.com): Stratum Open's checks that need
+# no model, on what's staged. README.md, "Other ways to run it", has the snippet.
+- id: stratum-open-checks
+  name: Stratum Open checks
+  description: Secrets, workflows, dependencies, hidden Unicode and coding-agent files (Bandit and Ruff when installed) in the staged changes.
+  entry: stratum-open review --staged --no-model --fail-on high
+  language: python
+  pass_filenames: false
+  stages: [pre-commit]
+  minimum_pre_commit_version: "3.2.0"

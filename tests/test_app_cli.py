@@ -6,10 +6,14 @@ import os
 import sqlite3
 import subprocess
 import sys
+import threading
+import time
 import tomllib
 from pathlib import Path
 
 import pytest
+import requests
+import yaml
 
 from stratum_open import cli
 from stratum_open.app import Server
@@ -255,6 +259,191 @@ def test_review_local_reads_every_moved_file_it_has_room_for(tmp_path, capsys, m
     findings = json.loads((tmp_path / "out.json").read_text())
     assert sorted(f["path"] for f in findings if f["rule"] == "code/eval") == [f"app/h{i:02}.js" for i in range(30)]
     assert "checks/moved-unread" not in {f["rule"] for f in findings}
+
+
+@pytest.fixture
+def committed(tmp_path, monkeypatch):
+    """A repo with one commit, no git config but its own, and the CLI run from it."""
+    empty = tmp_path / "gitconfig"
+    empty.write_text("")
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": str(empty), "GIT_CONFIG_NOSYSTEM": "1",
+           "GIT_AUTHOR_NAME": "a", "GIT_AUTHOR_EMAIL": "a@example.com", "GIT_COMMITTER_NAME": "a", "GIT_COMMITTER_EMAIL": "a@example.com"}
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, env=env)
+
+    git("init", "-q", "-b", "main")
+    (repo / "app.py").write_text("x = 1\n")
+    git("add", ".")
+    git("commit", "-q", "-m", "init")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
+    return repo, git
+
+
+def test_review_staged_reads_only_what_is_staged(committed, capsys, monkeypatch):
+    repo, git = committed
+    (repo / "sub").mkdir()
+    (repo / "sub" / "keys.py").write_text('API_KEY = "sk-live-0123456789abcdef0123"\n')
+    staged = "import pickle\n\n\ndef load(data):\n    return pickle.loads(data)\n"
+    (repo / "load.py").write_text(staged)
+    git("add", ".")
+    # Not staged: a secret in a committed file, one in an edit to a staged file, and one in a file git doesn't know.
+    (repo / "app.py").write_text('x = 1\nTOKEN = "sk-live-abcdef0123456789abcd"\n')
+    (repo / "load.py").write_text(staged + 'SECRET = "sk-live-9876543210fedcba9876"\n')
+    (repo / "notes.py").write_text('KEY = "sk-live-0123456789abcdef9999"\n')
+    # #62's settings, and the one only `--cached` reads (c/ and i/ in place of a/ and b/), change nothing.
+    for name, value in (("diff.external", "echo"), ("diff.noprefix", "true"), ("diff.mnemonicPrefix", "true"), ("diff.relative", "true")):
+        git("config", name, value)
+    sent = []
+    monkeypatch.setattr("stratum_open.checks.bandit.available", lambda: True)
+    monkeypatch.setattr("stratum_open.checks.bandit.run_bandit", lambda sources: sent.append(dict(sources)) or [])
+    monkeypatch.chdir(repo / "sub")
+    assert cli.main(["review", "--staged", "--no-model"]) == 1  # critical: the default --fail-on
+    assert capsys.readouterr().out == "sub/keys.py:1: critical code/secret Possible secret in the code\n"
+    assert sent[0]["load.py"] == staged  # the index's copy, not the working tree's
+
+
+@pytest.mark.parametrize("fail_on, code", [(None, 0), ("low", 1), ("medium", 1), ("high", 1), ("critical", 0)])
+def test_fail_on_sets_the_exit_code_by_severity(committed, capsys, monkeypatch, fail_on, code):
+    repo, git = committed
+    (repo / "run.py").write_text("def run(text):\n    return eval(text)\n")  # one high finding
+    git("add", ".")
+    monkeypatch.setattr("stratum_open.checks.bandit.available", lambda: False)  # it would add a medium one
+    assert cli.main(["review", "--staged", "--no-model", *(["--fail-on", fail_on] if fail_on else [])]) == code
+    assert capsys.readouterr().out == "run.py:2: high code/eval `eval()` runs a string as code\n"
+
+
+def test_review_staged_says_once_when_bandit_and_ruff_didnt_run(committed, capsys, monkeypatch):
+    repo, git = committed
+    (repo / ".stratum").mkdir()
+    (repo / ".stratum" / "policy.yml").write_text("checks:\n  ruff: true\n")
+    git("add", ".")
+    git("commit", "-q", "-m", "Turn Ruff on")  # the policy is read from HEAD
+    monkeypatch.setattr("stratum_open.checks.bandit.available", lambda: False)
+    monkeypatch.setattr("stratum_open.checks.ruff.available", lambda: False)
+    (repo / "README.md").write_text("Docs.\n")
+    git("add", ".")
+    assert cli.main(["review", "--staged", "--no-model", "--fail-on", "low"]) == 0
+    assert "didn't run" not in capsys.readouterr().err  # no Python file staged: neither would have read anything
+    (repo / "app.py").write_text("x = 2\n")
+    git("add", ".")
+    assert cli.main(["review", "--staged", "--no-model", "--fail-on", "low"]) == 0  # the other checks ran, and that's no failure
+    err = capsys.readouterr().err
+    assert err.count("didn't run") == 1
+    assert ("Bandit and Ruff didn't run on the staged Python files: not installed here. "
+            "In the pre-commit hook, add `bandit` and `ruff` to its additional_dependencies.") in err
+
+
+def test_review_staged_on_the_first_commit(tmp_path, capsys, monkeypatch):
+    empty = tmp_path / "gitconfig"
+    empty.write_text("")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(empty))
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init", "-q", "-b", "main"], check=True)
+    (tmp_path / "app.py").write_text('API_KEY = "sk-live-0123456789abcdef0123"\n')
+    subprocess.run(["git", "add", "."], check=True)
+    assert cli.main(["review", "--staged", "--no-model"]) == 1  # no HEAD: no policy, no commit message, no baseline
+    assert "app.py:1: critical code/secret" in capsys.readouterr().out
+
+
+def test_the_pre_commit_hook_runs_the_staged_checks(committed, capsys, monkeypatch):
+    [hook] = yaml.safe_load((Path(__file__).parents[1] / ".pre-commit-hooks.yaml").read_text(encoding="utf-8"))
+    assert (hook["id"], hook["language"], hook["pass_filenames"]) == ("stratum-open-checks", "python", False)
+    command, *args = hook["entry"].split()
+    assert command == "stratum-open"  # the console script, see test_the_command_is_stratum_open_not_hosted_stratums_stratum
+    repo, git = committed
+    monkeypatch.setattr("stratum_open.checks.bandit.available", lambda: False)
+    (repo / "clean.py").write_text("x = 3\n")
+    git("add", ".")
+    assert cli.main(args) == 0
+    (repo / "run.py").write_text("def run(text):\n    return eval(text)\n")
+    git("add", ".")
+    assert cli.main(args) == 1  # high
+    assert "run.py:2: high code/eval" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("args", [["--local"], ["--local", "main"], ["acme/widget#12"]])
+def test_review_staged_takes_neither_a_base_nor_a_pr(args):
+    with pytest.raises(SystemExit) as exit_:
+        cli.main(["review", "--staged", *args])
+    assert str(exit_.value) == "--staged reviews what's staged against HEAD, so it takes neither --local nor a PR."
+
+
+class _Network:
+    """requests.Session.get for the registry lookups: `hang` waits, as for a
+    host that never answers or a DNS server that doesn't, until the test ends;
+    otherwise each call answers with `reply` (a status code) or raises it."""
+
+    def __init__(self, reply=None, hang=False):
+        self.reply, self.hang, self.asked, self.done = reply, hang, [], threading.Event()
+
+    def get(self, url, **kwargs):  # set on the class, but bound to this object: no session argument
+        self.asked.append(url)
+        if self.hang:
+            self.done.wait(30)
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return type("Response", (), {"status_code": self.reply, "json": lambda self: {}})()
+
+
+@pytest.mark.parametrize("network, asked", [
+    (_Network(hang=True), 1),  # unreachable: the first lookup takes the whole budget, and the rest aren't asked
+    (_Network(requests.ConnectionError("refused")), 3),  # refused, or no DNS: each fails at once
+])
+def test_review_staged_gives_the_registry_lookups_a_few_seconds_in_all(committed, capsys, monkeypatch, network, asked):
+    repo, git = committed
+    (repo / "requirements.txt").write_text("flask==3.0.0\nhttpx==0.27.0\nrich==13.7.1\n")
+    git("add", ".")
+    monkeypatch.setattr(cli, "STAGED_LOOKUP_SECONDS", 0.5)
+    monkeypatch.setattr("requests.Session.get", network.get)
+    started = time.monotonic()
+    try:
+        assert cli.main(["review", "--staged", "--no-model", "--fail-on", "high"]) == 0
+    finally:
+        network.done.set()
+    assert time.monotonic() - started < 5
+    assert len(network.asked) == asked
+    out, err = capsys.readouterr()
+    assert "requirements.txt:1: low deps/new New dependency: `flask`" in out
+    assert ("3 new dependencies couldn't be looked up at the registry (no network, or past the 0.5 s a staged review "
+            "gives the lookups). The other checks ran.") in err
+
+
+def test_review_staged_keeps_what_the_registry_answers(committed, capsys, monkeypatch):
+    repo, git = committed
+    (repo / "requirements.txt").write_text("flaskk==3.0.0\n")
+    git("add", ".")
+    monkeypatch.setattr("requests.Session.get", _Network(404).get)
+    assert cli.main(["review", "--staged", "--no-model", "--fail-on", "high"]) == 1
+    out, err = capsys.readouterr()
+    assert "requirements.txt:1: high deps/missing `flaskk` isn't on PyPI" in out and "looked up" not in err
+
+
+def test_review_staged_skips_the_name_checks_when_the_working_tree_isnt_whats_staged(committed, capsys, monkeypatch):
+    repo, git = committed  # its app.py would make `app` ambiguous
+    (repo / "pkg").mkdir()
+    (repo / ".stratum").mkdir()
+    (repo / ".stratum" / "policy.yml").write_text("checks:\n  unknown_names: true\n")
+    (repo / "pkg" / "__init__.py").write_text("")
+    (repo / "pkg" / "db.py").write_text("def connect():\n    pass\n")
+    git("add", ".")
+    git("commit", "-q", "-m", "Add the db module")
+    (repo / "pkg" / "users.py").write_text("from pkg.db import close\n")
+    git("add", ".")
+    # `close` exists only in an edit that isn't staged: read from the working tree, the commit's import would look fine.
+    (repo / "pkg" / "db.py").write_text("def connect():\n    pass\n\n\ndef close():\n    pass\n")
+    assert cli.main(["review", "--staged", "--no-model"]) == 0
+    out, err = capsys.readouterr()
+    assert "has no `close`" not in out
+    assert ("checks.unknown_names didn't run: they read the other modules from the working tree, where `pkg/db.py` differs "
+            "from what's staged. Stage or stash it (new files too), and run it again.") in err
+    git("checkout", "--", "pkg/db.py")  # as pre-commit stashes it
+    assert cli.main(["review", "--staged", "--no-model"]) == 0
+    out, err = capsys.readouterr()
+    assert "pkg/users.py:1" in out and "`pkg/db.py` has no `close`" in out and "didn't run" not in err
 
 
 def test_data_commands(tmp_path, capsys):

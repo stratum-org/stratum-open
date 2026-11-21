@@ -4,7 +4,8 @@ name: Stratum
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
+    # closed and converted_to_draft only rebuild the triage queue: the PR leaves it.
+    types: [opened, synchronize, reopened, ready_for_review, closed, converted_to_draft]
   issue_comment:
     types: [created]
   # A reply in an inline thread. On a PR from a fork, GitHub gives this run a
@@ -18,7 +19,7 @@ on:
   #   workflows: [tests]
   #   types: [completed]
   schedule:
-    - cron: "17 6 * * *"  # rebuild the triage queue issue once a day
+    - cron: "17 6 * * *"  # once a day: rebuild the triage queue issue, and keep Ollama in the cache
   workflow_dispatch:
 
 permissions:
@@ -35,7 +36,8 @@ jobs:
     # A comment starts the job only if it might hold a command: "/stratum " (with the
     # space, so a link to stratum-org/stratum-open doesn't).
     if: >-
-      github.event_name == 'pull_request_target' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && github.event.action != 'closed' && github.event.action != 'converted_to_draft') ||
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
       github.event_name == 'workflow_run' ||
       contains(github.event.comment.body, '/stratum ')
     runs-on: ubuntu-latest
@@ -68,3 +70,37 @@ jobs:
           # To use your own server instead, remove this line and set
           # review.endpoint in .stratum/policy.yml (or model-endpoint here).
           ollama-model: gpt-oss:20b
+          # The queue job below rebuilds the triage queue, so this job doesn't (new after 0.3.0).
+          triage-queue: false
+
+  # Rebuilds the triage queue issue after the stratum job: after each PR's
+  # review, when a PR closes or turns back into a draft, after `/stratum review`
+  # or `/stratum ignore` or a CI result that re-sorts a PR, and on the daily and
+  # manual runs. A comment without a command starts neither job.
+  # No model, but about one API call per open PR, so it waits a minute first
+  # (not on the daily and manual runs): every rebuild is in one group, and a
+  # newer one cancels it while it waits, so a burst of events costs one rebuild.
+  queue:
+    # Stratum leaves this job's check runs out of a PR's CI by this name (runner.QUEUE_JOB): keep it.
+    name: Stratum triage queue
+    needs: stratum
+    if: >-
+      !cancelled() &&
+      (github.event_name == 'pull_request_target' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       ((github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment' || github.event_name == 'workflow_run') &&
+        needs.stratum.result == 'success'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    concurrency:
+      group: stratum-queue-${{ github.repository }}
+      cancel-in-progress: true
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: ./queue

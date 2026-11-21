@@ -108,7 +108,8 @@ def closed_prs(fake_github):
                                         "conclusion": "action_required", "created_at": "2026-01-01T11:00:00Z"}]
     # Passed while the PR was open; run again after it closed (2026-01-02), when it failed. The Action's own job isn't CI.
     fake_github.ci_runs[head_of(8)] = [run("12:00", "12:05", "success"), {**run("12:00", "12:05", "failure"), "started_at": "2026-01-05T12:00:00Z"},
-                                       {**run("12:00", "12:05", "cancelled"), "name": "stratum", "check_suite": {"id": 2}}]
+                                       {**run("12:00", "12:05", "cancelled"), "name": "stratum", "check_suite": {"id": 2}},
+                                       {**run("12:00", "12:05", "cancelled"), "name": "Stratum triage queue", "check_suite": {"id": 3}}]
 
 
 def test_replay_reads_closed_prs_and_writes_nothing(fake_github, fake_model, tmp_path):
@@ -179,7 +180,8 @@ def action_env(fake_github, fake_model, tmp_path, payload, event="pull_request_t
     path = tmp_path / "event.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     return {"GITHUB_EVENT_NAME": event, "GITHUB_EVENT_PATH": str(path), "GITHUB_REPOSITORY": fake_github.repo, "STRATUM_GITHUB_TOKEN": fake_github.token,
-            "GITHUB_API_URL": fake_github.url, "STRATUM_MODEL_ENDPOINT": fake_model.url, "STRATUM_BOT_LOGIN": fake_github.bot, "STRATUM_JOB_NAME": "stratum"}
+            "GITHUB_API_URL": fake_github.url, "STRATUM_MODEL_ENDPOINT": fake_model.url, "STRATUM_BOT_LOGIN": fake_github.bot, "STRATUM_JOB_NAME": "stratum",
+            "STRATUM_QUEUE_WAIT": "0"}
 
 
 def pr_payload(action="opened", draft=False, head=HEAD):
@@ -253,3 +255,61 @@ def test_action_comment_and_schedule_events(fake_github, fake_model, tmp_path):
     result = run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, {"repository": {"default_branch": "main"}}, event="schedule"))
     assert result.returncode == 0 and "Triage queue updated." in result.stdout
     assert [i["title"] for i in fake_github.issues] == ["Stratum triage queue"]
+
+
+def test_action_queue_rebuilds_the_queue_after_a_review_and_a_close(fake_github, fake_model, tmp_path):
+    """`stratum-open action --queue`, the workflow's queue job, after the review job of a PR event, then after the PR closes."""
+    fake_github.add_pull(7, diff=DIFF)
+    run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, pr_payload()))
+    assert fake_github.issues == []
+    result = run_stratum(["action", "--queue"], env=action_env(fake_github, fake_model, tmp_path, pr_payload()))
+    assert result.returncode == 0 and "Triage queue updated." in result.stdout, result.stderr
+    [queue] = fake_github.issues
+    assert queue["title"] == "Stratum triage queue" and "#7 " in queue["body"]
+
+    result = run_stratum(["needs-model"], env=action_env(fake_github, fake_model, tmp_path, pr_payload("closed")))
+    assert result.stdout.strip() == "false"
+    fake_github.pulls[7]["state"] = "closed"
+    calls = len(fake_model.calls)
+    result = run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, pr_payload("closed")))
+    assert result.returncode == 0 and "Nothing to do for a closed event." in result.stdout, result.stderr
+    assert len(fake_model.calls) == calls
+    result = run_stratum(["action", "--queue"], env=action_env(fake_github, fake_model, tmp_path, pr_payload("closed")))
+    assert result.returncode == 0 and "Triage queue updated." in result.stdout, result.stderr
+    [queue] = fake_github.issues
+    assert "#7 " not in queue["body"]
+    assert_no_traceback(result.stderr)
+
+
+@pytest.mark.parametrize("status, conclusion", [("completed", "cancelled"), ("queued", None), ("in_progress", None)])
+def test_the_queue_jobs_check_runs_arent_ci(fake_github, fake_model, tmp_path, status, conclusion):
+    """A newer rebuild cancels the queue job, and its check run lands on the PR's head; it says nothing about the PR."""
+    fake_github.add_pull(7, diff=DIFF)
+    head = fake_github.pulls[7]["head"]["sha"]
+    fake_github.ci_runs[head] = [
+        {"name": "test", "check_suite": {"id": 1}, "status": "completed", "conclusion": "success"},
+        {"name": "Stratum triage queue", "check_suite": {"id": 2}, "status": status, "conclusion": conclusion},
+    ]
+    result = run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, pr_payload()))
+    assert result.returncode == 0, result.stderr
+    summary = fake_github.summary_comments(7)[0]["body"]
+    assert "CI passes." in summary and "CI is failing" not in summary
+
+
+def test_action_queue_after_a_comment_rebuilds_only_for_a_label_changing_command(fake_github, fake_model, tmp_path):
+    fake_github.add_pull(7, diff=DIFF)
+    fake_github.permissions["erin"] = "write"
+    run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, pr_payload()))
+
+    def comment(body):
+        return {"action": "created", "repository": {"default_branch": "main"}, "issue": {"number": 7, "pull_request": {}},
+                "comment": {"id": 9, "body": body, "user": {"login": "erin", "type": "User"}}}
+
+    before = len(fake_github.requests)
+    result = run_stratum(["action", "--queue"], env=action_env(fake_github, fake_model, tmp_path, comment("/stratum help"), event="issue_comment"))
+    assert result.returncode == 0 and "can't change a PR's label" in result.stdout, result.stderr
+    assert fake_github.issues == [] and len(fake_github.requests) == before  # not one call
+    result = run_stratum(["action", "--queue"], env=action_env(fake_github, fake_model, tmp_path, comment("/stratum review"), event="issue_comment"))
+    assert result.returncode == 0 and "Triage queue updated." in result.stdout, result.stderr
+    assert [i["title"] for i in fake_github.issues] == ["Stratum triage queue"]
+    assert_no_traceback(result.stderr)

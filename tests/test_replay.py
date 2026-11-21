@@ -198,7 +198,7 @@ def test_the_facts_are_those_of_the_prs_final_commit(gh):
     assert {"workflow/pwn-request", "workflow/write-all"} <= set(moved.findings)  # read in full at the head
     assert moved.key == "needs_human" and moved.ci == CI.FAILED and moved.head == head_of(21)
     assert gh.ci_asked[0] == (head_of(21), CLOSED_AT)  # that commit's CI, as it stood when the PR closed
-    assert gh.ci_ignored == {"Stratum", "stratum"}  # Stratum's check and the Action's job aren't CI
+    assert gh.ci_ignored == {"Stratum", "stratum", "Stratum triage queue"}  # Stratum's check and the Action's jobs aren't CI
     assert (clean.additions, clean.deletions, clean.files) == (4, 1, 2)  # counted from the diff: GitHub's list has no sizes
 
 

@@ -106,6 +106,7 @@ triage:
   label_low_effort: true
   require_linked_issue: false  # true labels PRs with no linked issue "needs work"
   close_without_issue: false   # true closes them, with a comment saying why
+  queue: true                  # the "Stratum triage queue" issue; false stops rebuilding it (close the issue yourself)
 
 track_record:
   enabled: true                # each contributor can always see their own

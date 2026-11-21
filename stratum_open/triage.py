@@ -193,7 +193,7 @@ def render_queue(rows: list[tuple[PRFacts, Triage | None]], policy: Policy) -> s
     """The triage queue as one Markdown issue body."""
     lines = [
         "Open PRs sorted by Stratum. Within each group, the PRs that are cheapest to review and best supported come first.",
-        "This list is rebuilt on a schedule; edits to it are overwritten.",
+        "Stratum rebuilds this list from each PR's last review; edits to it are overwritten.",
         "",
     ]
     order = {"ready": 0, "needs_human": 1, "needs_work": 2, "low_effort": 3}

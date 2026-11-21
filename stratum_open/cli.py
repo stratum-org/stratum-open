@@ -82,6 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     step = action.add_mutually_exclusive_group()
     step.add_argument("--early", action="store_true", help="post the checks' findings before the model starts, with review.early_checks on")
     step.add_argument("--stopped", action="store_true", help="after --early, when the review step didn't finish: say so on the PR")
+    step.add_argument("--queue", action="store_true", help="rebuild the triage queue issue, after a PR's review or when it closes")
     sub.add_parser("needs-model", help="the GitHub Action: print whether this event can call the model")
     gitlab = sub.add_parser("gitlab", help="GitLab CI's entry point: review the pipeline's merge request")
     gitlab.add_argument("--dry-run", action="store_true", help="print the review instead of posting it")
@@ -350,6 +351,10 @@ def _triage(args) -> int:
 
     gh = GitHub(_token(), args.repo, api=_api())
     policy = load_context_policy(gh, gh.repository().get("default_branch") or "main")
+    if args.post and not policy.triage.queue:
+        print(f"triage.queue is off in {args.repo}'s .stratum/policy.yml, so the queue issue isn't posted. "
+              "Without --post, this prints the queue.", file=sys.stderr)
+        return 1
     bot = os.environ.get("STRATUM_BOT_LOGIN") or "github-actions[bot]"
     poster = None
     if args.post and not os.environ.get("STRATUM_BOT_LOGIN"):
@@ -422,6 +427,8 @@ def _action(args) -> int:
         return action.early()
     if getattr(args, "stopped", False):
         return action.stopped()
+    if getattr(args, "queue", False):
+        return action.queue()
     return action.main()
 
 

@@ -45,7 +45,7 @@ from stratum_open.github.api import GitHub, GitHubError
 from stratum_open.platform import CI
 from stratum_open.policy import POLICY_PATH, Policy
 from stratum_open.review import demention
-from stratum_open.runner import Context, check_pull, load_context_policy, skip_reason
+from stratum_open.runner import QUEUE_JOB, Context, check_pull, load_context_policy, skip_reason
 from stratum_open.triage import KEYS, PRFacts, label_for, triage
 
 MERGED, UNMERGED = "merged", "closed unmerged"
@@ -164,7 +164,7 @@ def _row(ctx: Context, pull: dict, default_branch: str) -> Row:
         facts = PRFacts.from_pull(pull, [f.path for f in files])
         # GitHub's list of PRs has no sizes; the final commit's diff does.
         facts.additions, facts.deletions = sum(f.additions for f in files), sum(f.deletions for f in files)
-        facts.ci = gh.ci_state_at(row.head, row.closed_at, ignore={policy.review.check_name, ACTION_JOB})
+        facts.ci = gh.ci_state_at(row.head, row.closed_at, ignore={policy.review.check_name, ACTION_JOB, QUEUE_JOB})
         facts.linked_issues = closing_issues(pull, default_branch)
     except GitHubError as exc:
         if exc.status in (401, 403, 429):  # the token is refused or out of requests: the next PR would fare no better
@@ -212,8 +212,8 @@ def notes(policy: Policy) -> list[str]:
         "GitHub keeps check runs for about 400 days, so an older PR can show no CI.",
         "- CI whose workflows were still waiting for a maintainer's approval when the PR closed (a first-time contributor's PR) "
         "counts as held, even if they were approved afterwards.",
-        f"- Stratum's own check and its Action's job aren't CI, as in a live review. The job is known by the example workflow's name "
-        f"for it, `{ACTION_JOB}`; under another name it counts as CI here.",
+        f"- Stratum's own check and its Action's job aren't CI, as in a live review, nor is the job that rebuilds the triage queue. "
+        f"The jobs are known by the example workflow's names for them, `{ACTION_JOB}` and `{QUEUE_JOB}`; under other names they count as CI here.",
         "",
         "From today:",
         f"- The policy is today's: {rules}.",

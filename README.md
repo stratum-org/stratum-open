@@ -107,7 +107,7 @@ GitHub's Ubuntu runners come with Go, and with Rust and Clippy. If your `go.mod`
   - who owns the changed files, from CODEOWNERS.
 - **One triage label:** `ready`, `needs work`, `low effort` or `needs a maintainer`, with the reasons spelled out. It judges what's in front of it: CI, tests, a linked issue, size, and whether the change matches its description. CI that GitHub holds until a maintainer approves the workflows, as on a first-time contributor's PR, is never a pass: the PR gets `needs a maintainer`, or `needs work` or `low effort` if the author has something to fix. GitHub doesn't say which PR a fork's finished CI run belongs to, so that label stays until the next push or `/stratum review`. It doesn't try to guess whether AI wrote the PR, because detectors for that aren't reliable. Labels are off until your policy turns them on, and it closes nothing unless your policy says so.
 - **A check run** that fails on a critical finding and is neutral on a high one. Make it required in branch protection if you want it to block merging.
-- **A triage queue:** one issue listing every open PR, cheapest to review and best supported first.
+- **A triage queue:** one issue listing every open PR, cheapest to review and best supported first. The example workflow rebuilds it once a day, and from the release after 0.3.0 also after each review or label-changing command, and when a PR closes or turns back into a draft ([Upgrading from 0.3.0](#upgrading-from-030)). A rebuild needs no model, but it costs about one GitHub API call per open PR, out of the 1,000 an hour that `GITHUB_TOKEN` gets and the reviews share. So after an event it waits a minute, and a newer event cancels it while it waits. [#200](https://github.com/stratum-org/stratum-open/issues/200) would cut a rebuild to a call or two. `triage.queue: false` stops rebuilding it, and `stratum-open triage --post` then refuses to post it; close the issue yourself. The GitHub App doesn't keep one yet ([#197](https://github.com/stratum-org/stratum-open/issues/197)).
 - **Track records:** each author's merged PRs that were later reverted or fixed, read from git history. Every contributor can see their own, with `/stratum record`. A record affects nothing unless your policy says so.
 
 ## Your rules: `.stratum/policy.yml`
@@ -251,6 +251,22 @@ The [benchmark](benchmark/) reviews real merged PRs with each model, and maintai
 ## Data
 
 [DATA.md](DATA.md) lists every field stored, where it lives and for how long, and everything that leaves your infrastructure. A test fails when a stored field is added without a line there.
+
+## Upgrading from 0.3.0
+
+The release after 0.3.0 rebuilds the triage queue issue after each PR's review, after `/stratum review` and `/stratum ignore`, after a CI re-sort, and when a PR closes or turns back into a draft, not only in the daily run, which GitHub often starts hours late. If you copied [examples/stratum.yml](examples/stratum.yml), copy four changes from it:
+
+- `closed` and `converted_to_draft` in the `pull_request_target` types;
+- the `stratum` job's `if:` filter, which starts no review for those two: replace `github.event_name == 'pull_request_target' ||` with `(github.event_name == 'pull_request_target' && github.event.action != 'closed' && github.event.action != 'converted_to_draft') ||`;
+- the `queue` job, named `Stratum triage queue` and pinned to the same release or commit as the review job. It runs `stratum-org/stratum-open/queue`, which starts no model, after the review job. Each rebuild costs about one API call per open PR, so after an event it waits a minute first, and a newer rebuild cancels it, so a burst of events costs one rebuild. A comment starts it only after the review job ran a command, and only `/stratum review` and `/stratum ignore` on a PR rebuild, from someone `commands.review` or `commands.ignore` lets run them; a CI result rebuilds only when it re-sorted a PR. Keep its name: Stratum leaves check runs by that name out of a PR's CI, and a cancelled one would otherwise read as failing CI;
+- `triage-queue: false` on the review job's Stratum step, so the daily and manual runs leave the rebuild to the `queue` job and no two rebuilds overlap. The `stratum` job still runs on them, since its scheduled run is what keeps Ollama in the Actions cache.
+
+The first two work on 0.3.0 and are in the example already. The `queue` job and `triage-queue: false` are commented out there until the release that has the `queue` action, since `stratum-org/stratum-open/queue@v0.3.0` doesn't exist. Uncomment them together when you pin that release: `triage-queue: false` without the job stops the daily rebuild. Without either, the daily run rebuilds the queue as before.
+
+Two more changes in that release:
+
+- **`actions: read`.** On a private repo, the workflow needs `actions: read` in its `permissions:` block (the example has it), and an existing GitHub App install has to accept the new "Actions: read" permission. Without it, CI that's waiting for a maintainer's approval reads as passing again, and the only sign is a line in the job's log.
+- **`replay --json`'s `ci` field** is now a string (`"passed"`, `"failed"`, `"pending"`, `"held"` or `"none"`), not `true`/`false`/`null`.
 
 ## Upgrading to 0.3.0
 

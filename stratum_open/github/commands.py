@@ -31,6 +31,9 @@ MUTE_LEARNS = ("The Action can't store a mute, but this repo has `review.learn_f
 
 # Commands that can call the model: explain, ask, and the ones that review again.
 NEEDS_MODEL = {"review", "re-review", "rereview", "ignore", "explain", "ask"}
+# Commands that review again, so they can change a PR's triage label, and the queue with it,
+# and the command in `commands` (the policy) that says who may run each.
+LABEL_COMMANDS = {"review": "review", "re-review": "review", "rereview": "review", "ignore": "ignore"}
 # Explanations per person and per PR in a day: enough to understand a review,
 # too few to turn the model into someone else's free service. Answers to
 # `/stratum ask` count here too: each is a model call of the same kind.
@@ -175,21 +178,27 @@ def unreadable_reply(ctx: Context, event: str, payload: dict) -> str | None:
             f"Post {instead} as a comment on the PR instead, not as a reply in a thread.")
 
 
-def _allowed(ctx: Context, command: str, login: str, number: int, reply) -> bool:
-    """Whether `login` may run `command`, per the policy's `commands`:
-    anyone, author (the PR's author, or anyone with write access) or write."""
+def may_run(ctx: Context, command: str, login: str, number: int) -> bool:
+    """Whether `login` may run `command` on PR `number`, per the policy's
+    `commands`: anyone, author (the PR's author, or anyone with write access)
+    or write. Raises GitHubError when GitHub can't say."""
     who = getattr(ctx.policy.commands, command)
     if who == "anyone":
         return True
+    if who == "author" and login.lower() == ((ctx.gh.pull(number).get("user") or {}).get("login") or "").lower():
+        return True
+    return ctx.gh.permission(login) in WRITE
+
+
+def _allowed(ctx: Context, command: str, login: str, number: int, reply) -> bool:
+    """`may_run`, saying why not to whoever asked."""
     try:
-        if who == "author" and login.lower() == ((ctx.gh.pull(number).get("user") or {}).get("login") or "").lower():
-            return True
-        if ctx.gh.permission(login) in WRITE:
+        if may_run(ctx, command, login, number):
             return True
     except GitHubError as exc:  # can't tell: treat as no access, and say why
         reply(f"@{login}, Stratum couldn't check your access to this repo just now (GitHub answered {exc.status}). Please try again later.")
         return False
-    if who == "author":
+    if getattr(ctx.policy.commands, command) == "author":
         why = ", since each one runs the project's model" if command == "explain" else ""
         reply(f"@{login}, that's for this PR's author and people with write access to the repo{why}.")
     else:

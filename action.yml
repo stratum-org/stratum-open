@@ -31,6 +31,11 @@ inputs:
       and so run it. Leave empty (the default) and they don't run. Stratum refuses to build a PR from a fork, or one a
       bot opened (unless checks.build_bot_prs), whatever this says; see the README before setting it.
     default: ""
+  triage-queue:
+    description: >-
+      Whether this job rebuilds the triage queue issue on scheduled and manual runs. The example workflow sets it
+      to false, since its queue job rebuilds the queue then, one rebuild at a time.
+    default: "true"
 
 runs:
   using: composite
@@ -96,6 +101,7 @@ runs:
         STRATUM_EARLY_CHECK_RUN: ${{ steps.early.outputs.check-run }}
         STRATUM_EARLY_CONCLUSION: ${{ steps.early.outputs.conclusion }}
         STRATUM_HEAD_CHECKOUT: ${{ inputs.head-checkout }}
+        STRATUM_TRIAGE_QUEUE: ${{ inputs.triage-queue }}
       run: stratum-open action
 
     - name: Say the model's review didn't finish

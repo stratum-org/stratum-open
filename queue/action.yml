@@ -1,0 +1,26 @@
+name: Stratum Open triage queue
+description: Rebuild the triage queue issue from each open PR's last Stratum review. No model.
+author: Anshul Patil
+
+inputs:
+  github-token:
+    description: Token for reading the PRs and editing the queue issue. The default works with the permissions of the example workflow's queue job.
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: "3.12"
+
+    - name: Install Stratum Open
+      shell: bash
+      run: python -m pip install --quiet --disable-pip-version-check "$GITHUB_ACTION_PATH/.."
+
+    - name: Rebuild the triage queue
+      # Reads each open PR's summary and edits one issue. A failure is a warning, not a failed job.
+      shell: bash
+      env:
+        STRATUM_GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: stratum-open action --queue

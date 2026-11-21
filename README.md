@@ -38,7 +38,7 @@ pipx run stratum-open replay owner/repo
 
 It needs a GitHub token, from `GITHUB_TOKEN` or the GitHub CLI (`gh auth login`): a PR takes about 5 API requests, and GitHub allows 60 an hour without a token. If GitHub's rate limit stops it anyway, it says how far it got and when the limit resets.
 
-From the release after 0.3.0, `--format markdown` gives a report to paste into an issue or a discussion, and `--format html --out replay.html` one page to open in a browser. Both start with the labels against what became of the PRs, then the PRs where the two disagree (marked ready but closed, or marked needs work but merged), and both say what a replay can't rebuild, such as the model's review.
+From the release after 0.3.0, `--format markdown` gives a report to paste into an issue or a discussion, and `--format html --out replay.html` one page to open in a browser. Both start with the labels against what became of the PRs, then the PRs where the two disagree (marked ready but closed, or marked needs work but merged), and both say what a replay can't rebuild, such as the model's review. The Markdown report writes PR and issue numbers in code, so GitHub doesn't link them: pasted into an issue, a linked number would add a "mentioned this" line to that PR or issue, one for each PR in the report. The HTML page links each PR.
 
 ![The HTML report of a replay: a table of the labels against merged and closed PRs, then each PR with its label and the reasons for it](docs/images/replay.png)
 

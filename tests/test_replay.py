@@ -366,12 +366,10 @@ def test_the_markdown_report_leads_with_the_counts_and_where_label_and_outcome_d
     assert "No model reviewed these PRs and no author's track record was counted" in counts
     odd = text.split("## Where the label and the outcome disagree")[1].split("##")[0]
     assert "Marked `triage: ready` but closed without merging, or `triage: needs work` but merged" in odd
-    assert [line.split(")")[0] for line in odd.splitlines() if line.startswith("| [#")] == [
-        "| [#14](https://github.com/acme/widget/pull/14", "| [#12](https://github.com/acme/widget/pull/12",
-    ]
+    assert [line.split(" ")[1] for line in odd.splitlines() if line.startswith("| `#")] == ["`#14`", "`#12`"]
     every = text.split("## Every PR")[1].split("## What this rests on")[0].strip()
     assert every.startswith("<details>\n<summary>4 PRs, newest first</summary>") and every.endswith("</details>")
-    assert len([line for line in every.splitlines() if line.startswith("| [#")]) == 4
+    assert len([line for line in every.splitlines() if line.startswith("| `#")]) == 4
     footer = text.split("## What this rests on")[1]
     assert "The model's review." in footer and "`track_record.affects_triage` does nothing here." in footer
     assert "GitHub requests: 20, about 5.0 per PR." in footer
@@ -412,8 +410,27 @@ def test_a_title_in_a_markdown_report_can_neither_break_the_table_nor_ping_anyon
     gh.pulls[11]["title"] = title
     report = replay(gh)
     for text in (render_markdown(report), render(report)):
-        line = [line for line in text.splitlines() if line.startswith(("| [#11]", "| #11 "))][-1]
+        line = [line for line in text.splitlines() if line.startswith(("| `#11` ", "| #11 "))][-1]
         assert line.split(" ", 2)[2].startswith(f"{cell} | merged | triage: ready |"), line
+
+
+@pytest.mark.parametrize("title, cell", [
+    ("Fixes #12", "Fixes `#12`"),
+    ("Port acme/gadget#3 and GH-4", "Port `acme/gadget#3` and `GH-4`"),
+    ("As in https://github.com/acme/widget/pull/9/files", "As in `https://github.com/acme/widget/pull/9/files`"),
+    ("Keep `#5` and (#6)", "Keep `#5` and (`#6`)"),  # already code, then a number in brackets
+    ("`a`#7", "`a` `#7`"),  # side by side, the backticks would make one run of two
+    ("odd ` #8", "odd ` ``#8``"),  # the lone backtick would close a code span of one
+    ("issue#9 and x#10", "issue#9 and x#10"),  # GitHub links neither
+])
+def test_the_markdown_report_to_share_puts_every_pr_and_issue_number_in_code(gh, title, cell):
+    """Pasted into an issue or a discussion, a number GitHub links adds a "mentioned this" line to that PR or issue."""
+    gh.pulls[11]["title"] = title
+    report = replay(gh)
+    line = [line for line in render_markdown(report).splitlines() if line.startswith("| `#11` ")][-1]
+    assert line == f"| `#11` {cell} | merged | triage: ready | CI passes. Linked to `#3`. Changes tests. |  |"
+    line = [line for line in render(report).splitlines() if line.startswith("| #11 ")][-1]  # the terminal's table is as it was
+    assert line.startswith("| #11 ") and line.endswith("| CI passes. Linked to #3. Changes tests. |  |")
 
 
 def test_the_html_report_is_one_page_that_loads_nothing_and_escapes_every_title(disagreeing):
@@ -438,7 +455,7 @@ def test_a_column_added_to_columns_shows_in_every_format(gh, monkeypatch):
     report = replay(gh)
     assert "| PR | Outcome | Label | Why | Checks' findings | Agent |" in render(report)
     assert "| CI passes. Linked to #3. Changes tests. |  | agent of #11 |" in render(report)
-    assert "| --- | --- | --- | --- | --- | --- |" in render_markdown(report) and "| agent of #12 |" in render_markdown(report)
+    assert "| --- | --- | --- | --- | --- | --- |" in render_markdown(report) and "| agent of `#12` |" in render_markdown(report)
     assert "<th>Agent</th>" in render_html(report) and "<td>agent of #13</td>" in render_html(report)
 
 

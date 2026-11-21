@@ -312,7 +312,7 @@ def render(report: Report) -> str:
     lines = _head(report)
     if not report.rows:
         return "\n".join(lines)
-    lines += [_intro(report), "", *_markdown_table(report.policy, report.rows, link=False), ""]
+    lines += [_intro(report), "", *_markdown_table(report.policy, report.rows, share=False), ""]
     lines += ["## Label against outcome", "", *_markdown_counts(report), "", _with_findings(report), ""]
     lines += ["## What this rests on", "", *notes(report.policy), "", *_request_count(report)]
     return "\n".join(lines)
@@ -321,7 +321,8 @@ def render(report: Report) -> str:
 def render_markdown(report: Report) -> str:
     """The report to share, in an issue, a discussion or a job summary: the
     counts, the PRs whose label and outcome disagree, every PR (folded), and
-    what it rests on. No title in it can ping anyone or break a table."""
+    what it rests on. No title in it can ping anyone or break a table, and
+    no PR or issue number in it is linked (see `_markdown_table`)."""
     policy, rows = report.policy, report.rows
     lines = _head(report)
     if not rows:
@@ -329,9 +330,9 @@ def render_markdown(report: Report) -> str:
     odd = disagreements(rows)
     lines += [_intro(report), "", "## Label against outcome", "", *_markdown_counts(report), "", _with_findings(report), "", CAVEAT, ""]
     lines += ["## Where the label and the outcome disagree", "", _disagreeing(policy, odd), ""]
-    lines += [*_markdown_table(policy, odd, link=True), ""] if odd else []
+    lines += [*_markdown_table(policy, odd, share=True), ""] if odd else []
     lines += ["## Every PR", "", "<details>", f"<summary>{count(len(rows), 'PR')}, newest first</summary>", "",
-              *_markdown_table(policy, rows, link=True), "", "</details>", ""]
+              *_markdown_table(policy, rows, share=True), "", "</details>", ""]
     lines += ["## What this rests on", "", *notes(policy), "", *_request_count(report)]
     return "\n".join(lines)
 
@@ -438,11 +439,15 @@ def _link(url: str) -> bool:
 # Markdown
 
 
-def _markdown_table(policy: Policy, rows: list[Row], *, link: bool) -> list[str]:
+def _markdown_table(policy: Policy, rows: list[Row], *, share: bool) -> list[str]:
+    """The per-PR table. To `share`, every PR and issue number is in code,
+    the PR's own too: pasted into an issue or a discussion, a number GitHub
+    links adds a "mentioned this" line to that PR or issue, which for a
+    50-PR report is 50 lines or more on other people's PRs."""
     lines = ["| PR | " + " | ".join(column.heading for column in COLUMNS) + " |", "| --- |" + " --- |" * len(COLUMNS)]
     for row in rows:
-        pr = f"[#{row.number}]({row.url})" if link and _link(row.url) else f"#{row.number}"
-        cells = [f"{pr} {_cell(row.title, 80)}", *(_cell(column.text(policy, row), column.limit) for column in COLUMNS)]
+        cells = [f"{f'`#{row.number}`' if share else f'#{row.number}'} {_cell(row.title, 80, references=not share)}",
+                 *(_cell(column.text(policy, row), column.limit, references=not share) for column in COLUMNS)]
         lines.append(f"| {' | '.join(cells)} |")
     return lines
 
@@ -454,40 +459,78 @@ def _markdown_counts(report: Report) -> list[str]:
     return lines
 
 
-def _cell(text: str, limit: int) -> str:
+def _cell(text: str, limit: int, *, references: bool = True) -> str:
     """Text for one table cell: one line of at most `limit` characters, with
-    nothing that ends the cell or the table, leaves code open or pings anyone."""
+    nothing that ends the cell or the table, leaves code open or pings anyone,
+    and, without `references`, no issue or PR number GitHub would link."""
     text = " ".join(text.split())
     if len(text) > limit:
         text = text[:limit - 1].rstrip() + "…"
         text += "`" if text.count("`") % 2 else ""  # the cut fell inside a code span
-    return _no_html(demention(text)).replace("|", "\\|")
+    return _plain(demention(text), references=references).replace("|", "\\|")
 
 
 _TICKS = re.compile(r"`+")
+# What GitHub links to an issue or a PR, outside code: #12, owner/repo#12, GH-12, and their URLs.
+_REFERENCE = re.compile(
+    r"https?://[^\s`]+?/(?:issues|pull|discussions)/\d+[^\s`]*|(?<![\w./-])(?:[\w.-]+/[\w.-]+)?#\d+\b|\b(?i:gh)-\d+\b"
+)
 
 
-def _no_html(text: str) -> str:
+def _plain(text: str, *, references: bool = True) -> str:
     """`text` with each `<` outside code written `&lt;`, so GitHub renders no
     HTML from a PR's title: a `<details>` would fold the rest of the report,
-    and a `</table>` would end the table. Code spans are found as GitHub's
-    Markdown finds them, backslash escapes included, and keep their `<`,
-    which shows as itself there."""
-    out, at = [], 0
+    and a `</table>` would end the table. Without `references`, each issue or
+    PR number outside code goes in code too, where GitHub doesn't link it.
+    Code spans are found as GitHub's Markdown finds them, and are kept as
+    they are: a `<` shows as itself there."""
+    pieces = list(_pieces(text))
+    # Backticks for the new code spans, as many as no unclosed run in the text has, so none of those can close one.
+    loose = {len(run) for kind, piece in pieces if kind == "text" for run in _TICKS.findall(piece)}
+    ticks = "`" * next(n for n in range(1, len(loose) + 2) if n not in loose)
+    out: list[str] = []
+    for index, (kind, piece) in enumerate(pieces):
+        if kind == "text":
+            piece = piece.replace("<", "&lt;")
+            if not references:
+                line = f"{out[-1][-1:] if out else ''}{piece}{pieces[index + 1][1][:1] if index + 1 < len(pieces) else ''}"
+                shift = 1 if out else 0  # where `piece` starts in `line`
+
+                def code(match: re.Match, line=line, shift=shift) -> str:
+                    # Next to another backtick, the new ones would make a longer run: a space keeps them apart.
+                    before = " " if line[match.start() + shift - 1:match.start() + shift] == "`" else ""
+                    after = " " if line[match.end() + shift:match.end() + shift + 1] == "`" else ""
+                    return f"{before}{ticks}{match.group()}{ticks}{after}"
+
+                piece = _REFERENCE.sub(code, piece)
+        out.append(piece)
+    return "".join(out)
+
+
+def _pieces(text: str):
+    """`text` as GitHub's Markdown reads it, in order: ("code", a code span),
+    ("escape", a backslash and the character it escapes) and ("text", the
+    rest). A run of backticks with no closing run of its length is text."""
+    start = at = 0
     while at < len(text):
-        if text[at] == "\\":  # an escaped character can't open code, nor start a tag
-            out.append(text[at:at + 2])
-            at += 2
+        if text[at] == "\\":
+            kind, end = "escape", at + 2
         elif text[at] == "`":
             run = _TICKS.match(text, at).group()
             close = next((tick for tick in _TICKS.finditer(text, at + len(run)) if tick.group() == run), None)
-            end = close.end() if close else at + len(run)  # a run with no closer of its length is plain text
-            out.append(text[at:end])
-            at = end
+            if close is None:
+                at += len(run)
+                continue
+            kind, end = "code", close.end()
         else:
-            out.append("&lt;" if text[at] == "<" else text[at])
             at += 1
-    return "".join(out)
+            continue
+        if start < at:
+            yield "text", text[start:at]
+        yield kind, text[at:end]
+        start = at = end
+    if start < len(text):
+        yield "text", text[start:]
 
 
 # HTML

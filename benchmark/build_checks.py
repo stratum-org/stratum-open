@@ -49,11 +49,17 @@ out, so kept.csv is what a review would get. It writes:
 - prs.json: for each PR, the files and added lines each check read (those
   under a module or crate it ran on), the toolchains, the seconds each
   program took, and the checks' coverage lines (a build that failed, say).
+  Each program run is there too, with its exit code, the first line of its
+  error output, and what it built: the crates cargo built or found built
+  (its `compiler-artifact` messages) and how many it compiled then, or the
+  packages go vet reported on. Then the free disk space, and the size of the
+  project's clone and target folder, which it also prints after each project.
 
 `score` reads every prs.json under the folder, with the issues.csv beside it,
 and writes summary.md: what each check kept, with the marks, the build times
 per project, every issue by program and code, kept or not, what didn't run,
-and the folder's notes.md.
+and the folder's notes.md. A program run that built nothing counts as a build
+that didn't happen, whatever its exit code.
 """
 
 from __future__ import annotations
@@ -61,6 +67,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import statistics
 import subprocess
 import sys
@@ -84,6 +91,7 @@ PRS = [str(HERE / "planted" / "clean-go.json"), str(HERE / "planted" / "clean-ru
 SOURCE = "https://github.com/{repo}.git"
 TIMEOUT_SECONDS = 3600
 SETUP_SECONDS = 900
+MB = 1_000_000
 # Each check by the name its coverage lines use: its module, its policy key, the programs it runs (as tools.run names
 # them, each with the name a row of issues.csv gives it), and the file at a module's or crate's root.
 CHECKS = {
@@ -275,6 +283,71 @@ def issues(worktree: str, files: list[FileDiff], calls: list[dict]) -> list[dict
     return rows
 
 
+def runs(worktree: str, calls: list[dict]) -> list[dict]:
+    """Each program run, as prs.json keeps it: the program, the folder it ran
+    in, its exit code (None when it ran out of time), the first line of its
+    error output, its seconds, and what it built (`built`)."""
+    return [{"program": call["name"], "folder": tools.relative(worktree, call["cwd"]) or ".", "code": call["code"],
+             "stderr": error_line(call["stderr"]), "seconds": call["seconds"], "timed_out": call["timed_out"], **built(call)}
+            for call in calls]
+
+
+def error_line(text: str) -> str:
+    """The first line of a program's error output, leaving out what isn't an
+    error there: go vet's `# package` lines, and the JSON report it wrote to
+    stderr before Go 1.24 or so."""
+    return tools.first_line("\n".join(line for line in text.splitlines() if not line.lstrip().startswith(("{", "}", '"', "[", "]"))))
+
+
+def built(call: dict) -> dict:
+    """What a program run built, as its output tells: for Clippy, the crates
+    cargo built or found built (`compiler-artifact`) and how many it compiled
+    then; for go vet, the packages it reported on, `{}` for one with nothing
+    to say. Nothing for staticcheck, whose output doesn't tell."""
+    if call["name"] == "Clippy":
+        artifacts = [item for item in _json_lines(call["stdout"]) if item.get("reason") == "compiler-artifact"]
+        return {"built": len(artifacts), "compiled": sum(1 for item in artifacts if not item.get("fresh"))}
+    if call["name"] == "go vet":
+        return {"built": len(go_vet._json_objects(call["stdout"]) + go_vet._json_objects(call["stderr"]))}
+    return {}
+
+
+def _json_lines(text: str) -> list[dict]:
+    found = []
+    for line in text.splitlines():
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(item, dict):
+            found.append(item)
+    return found
+
+
+def built_nothing(run: dict) -> bool:
+    """A run that finished and, by its output, built nothing."""
+    return run.get("built") == 0 and not run.get("timed_out")
+
+
+def disk(where: Path) -> dict:
+    """Free space where the clone is, and the size of the clone and of its
+    cargo target folder, in MB."""
+    return {"free_mb": round(shutil.disk_usage(where).free / MB, 1), "clone_mb": round(size(where) / MB, 1),
+            "target_mb": round(size(Path(str(where) + ".target")) / MB, 1)}
+
+
+def size(folder: Path) -> int:
+    """The bytes of the files under `folder`, links not followed."""
+    total = 0
+    for root, _, names in os.walk(folder):
+        for name in names:
+            try:
+                total += os.lstat(os.path.join(root, name)).st_size
+            except OSError:
+                pass
+    return total
+
+
 def read_by(worktree: str, files: list[FileDiff], name: str, calls: list[dict]) -> list[FileDiff]:
     """The PR's files check `name` read: those it wants under a module or
     crate where one of its programs ran to the end. A file with no root
@@ -405,13 +478,18 @@ def _run(prs: list[dict], repos: Path, out: Path, timeout: float) -> int:
                 "files": {name: len(read[name]) for name in CHECKS}, "lines": {name: sum(len(f.added()) for f in read[name]) for name in CHECKS},
                 "seconds": result["seconds"], "programs": {name: round(seconds, 1) for name, seconds in programs.items()},
                 "timed_out": sorted({call["name"] for call in result["calls"] if call["timed_out"]}),
-                "notes": result["notes"], "issues": len(found), "findings": len(result["findings"]),
+                "runs": runs(str(where), result["calls"]),
+                "notes": result["notes"], "issues": len(found), "findings": len(result["findings"]), "disk": disk(where),
             })
             listed.append(entry)
             print(f"{case}: {len(found)} issue(s) on added lines, {len(result['findings'])} kept; "
                   + ", ".join(f"{name} {seconds:.0f} s" for name, seconds in result["seconds"].items())
+                  + "".join(f", {run['program']} built {run['built']}" for run in entry["runs"] if "built" in run)
                   + "".join(f"; {note}" for note in result["notes"]) + (f"; {entry['error']}" if entry["error"] else ""), flush=True)
             save()
+        space = disk(where)
+        print(f"{repo}: {space['free_mb']:,.0f} MB free; the clone is {space['clone_mb']:,.0f} MB "
+              f"and its target folder {space['target_mb']:,.0f} MB", flush=True)
     save()
     return 0
 
@@ -440,10 +518,24 @@ def scores(out: Path) -> list[dict]:
         table.append({
             "run": out.name, "check": name, "setting": setting, "prs": len(ran), "lines": sum(p["lines"][name] for p in ran),
             "findings": len(kept), **{verdict: sum(1 for row in kept if row["verdict"] == verdict) for verdict in VERDICTS},
-            "unbuilt": sum(1 for p in ran if any(failed(note, programs) for note in p["notes"])),
+            "unbuilt": sum(1 for p in ran if unbuilt(p, programs)),
             "limit": module.TIMEOUT_SECONDS, "slow": sum(1 for p in ran if p["seconds"][name] > module.TIMEOUT_SECONDS),
         })
     return table
+
+
+def unbuilt(pr: dict, programs: dict[str, str]) -> bool:
+    """Whether a PR's code didn't build for a check: a coverage line says so,
+    or one of the check's programs finished having built nothing."""
+    return (any(failed(note, programs) for note in pr["notes"])
+            or any(run["program"] in programs and built_nothing(run) for run in pr.get("runs", [])))
+
+
+def nothing_built(pr: dict) -> list[str]:
+    """A line for each of the PR's program runs that built nothing."""
+    return [f"{run['program']} built nothing in `{run['folder']}` (exit code {run['code']}"
+            + (f", {tools.code_span(run['stderr'])}" if run["stderr"] else "") + ")"
+            for run in pr.get("runs", []) if built_nothing(run)]
 
 
 def failed(note: str, programs: dict[str, str]) -> bool:
@@ -464,16 +556,23 @@ def build_times(prs: list[dict]) -> list[dict]:
         for repo, ran in by_repo.items():
             ran.sort(key=lambda p: p["order"])
             rest = [p["seconds"][name] for p in ran[1:]]
+            spaces = [p["disk"] for p in ran if p.get("disk")]
             table.append({
                 "repo": repo, "check": name, "prs": len(ran), "first": ran[0]["seconds"][name],
                 "median": statistics.median(rest) if rest else None, "slowest": max(p["seconds"][name] for p in ran),
                 "slow": sum(1 for p in ran if p["seconds"][name] > module.TIMEOUT_SECONDS), "limit": module.TIMEOUT_SECONDS,
+                "used": max((s["clone_mb"] + s["target_mb"] for s in spaces), default=None),
+                "free": min((s["free_mb"] for s in spaces), default=None),
             })
     return table
 
 
 def _seconds(value: float | None) -> str:
     return "" if value is None else f"{value:,.0f} s"
+
+
+def _megabytes(value: float | None) -> str:
+    return "" if value is None else f"{value:,.0f} MB"
 
 
 def _score(out: Path) -> int:
@@ -493,12 +592,14 @@ def _score(out: Path) -> int:
     lines += [
         "", "## Build times", "",
         "The seconds each check took on a PR, downloading the dependencies included. The first PR of each project was built "
-        "with nothing cached, as on a fresh runner; the others reused what the PRs before them had downloaded and built.", "",
-        "| Project | Check | PRs | First PR | Median of the others | Slowest | Past the review's limit |", "| --- | --- | --- | --- | --- | --- | --- |",
+        "with nothing cached, as on a fresh runner; the others reused what the PRs before them had downloaded and built. "
+        "The space is the most the project's clone and cargo target folder took after a PR, and the least disk left free.", "",
+        "| Project | Check | PRs | First PR | Median of the others | Slowest | Past the review's limit | Clone and target | Free |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in build_times(prs):
         lines.append(f"| {row['repo']} | {row['check']} | {row['prs']} | {_seconds(row['first'])} | {_seconds(row['median'])} "
-                     f"| {_seconds(row['slowest'])} | {row['slow']} |")
+                     f"| {_seconds(row['slowest'])} | {row['slow']} | {_megabytes(row['used'])} | {_megabytes(row['free'])} |")
     lines += ["", "## Every issue on added lines, kept or not", "", "| Program | Code | Kept | Issues | Right | Wrong | Unsure |",
               "| --- | --- | --- | --- | --- | --- | --- |"]
     groups: dict[tuple, list[dict]] = defaultdict(list)
@@ -511,7 +612,7 @@ def _score(out: Path) -> int:
         lines += ["", "What the checks keep:", "", "| Where | Code | Line | Verdict | Why |", "| --- | --- | --- | --- | --- |"]
         lines += [f"| {row['case']} `{row['path']}`:{row['line']} | `{row['code']}` | `{_cell(row['text'][:80])}` | {row['verdict']} | {_cell(row['note'])} |"
                   for row in kept]
-    missing = [(p, note) for p in prs for note in ([p["error"]] if p.get("error") else []) + p.get("notes", [])]
+    missing = [(p, note) for p in prs for note in ([p["error"]] if p.get("error") else []) + p.get("notes", []) + nothing_built(p)]
     if missing:
         lines += ["", "## What didn't run", "", "| PR | Why |", "| --- | --- |"]
         lines += [f"| {p['repo']}#{p['pr']} | {_cell(note)} |" for p, note in missing]

@@ -136,7 +136,8 @@ need each PR checked out at its head, with its dependencies, and not only its di
 checks` and the corpus fetch. [build_checks.py](build_checks.py) clones each of the 12 Go and Rust projects of
 `clean-go.json` and `clean-rust.json` once, checks out each of their 120 PRs at its head (`pull/N/head`), runs both checks
 on it as a review would, and writes down every issue go vet, staticcheck and Clippy report on a line the PR adds, kept or
-not, with the seconds each build took. staticcheck is asked for every SA check and Clippy for its `suspicious` group too,
+not, with the seconds each build took, what it built (a build that built nothing counts as one that didn't build) and the
+disk space it used. staticcheck is asked for every SA check and Clippy for its `suspicious` group too,
 so what the checks leave out is measured from the same build. The first PR of each project is built with nothing
 cached, as on a fresh runner; the others reuse what the PRs before them downloaded and built. Building a project runs its
 code, so start the **Build-check benchmark** workflow: it runs on GitHub's runners, one job per project, and builds inside

@@ -164,7 +164,7 @@ def test_each_pr_is_checked_out_at_its_head_with_nothing_left_from_the_one_befor
     assert not build_checks.check_out(where, "0" * 40)
 
 
-def test_run_writes_every_issue_and_the_build_times_and_keeps_the_marks(monkeypatch, tmp_path):
+def test_run_writes_every_issue_and_the_build_times_and_keeps_the_marks(monkeypatch, tmp_path, capsys):
     shas = origin_with_prs(tmp_path / "origin", {5: {"a.go": GO_FILE}})
     monkeypatch.setattr(build_checks, "SOURCE", str(tmp_path / "origin"))
     monkeypatch.setattr(bench, "CACHE", tmp_path / "cache")
@@ -188,6 +188,12 @@ def test_run_writes_every_issue_and_the_build_times_and_keeps_the_marks(monkeypa
     assert listed[0]["files"] == {"go vet": 1, "Clippy": 0} and listed[0]["lines"] == {"go vet": 1, "Clippy": 0}
     assert list(listed[0]["seconds"]) == ["go vet"] and list(listed[0]["programs"]) == ["go vet"]
     assert listed[0]["order"] == 0 and listed[0]["toolchains"] == {"go": "go version go1.26.3 linux/amd64"} and listed[0]["error"] == ""
+    # Each program run, with its exit code and what it built, and the disk after the PR.
+    assert [(r["program"], r["folder"], r["code"], r["built"], r["timed_out"]) for r in listed[0]["runs"]] == [("go vet", ".", 0, 1, False)]
+    assert set(listed[0]["disk"]) == {"free_mb", "clone_mb", "target_mb"} and listed[0]["disk"]["free_mb"] > 0
+    printed = capsys.readouterr().out
+    assert "acme/widget#5: 2 issue(s) on added lines, 1 kept; go vet 0 s, go vet built 1\n" in printed
+    assert "\nacme/widget: " in printed and " MB free; the clone is " in printed
     # The marks stay when it's run again.
     rows[1]["verdict"], rows[1]["note"] = "wrong", "a style matter"
     bench._write(out / "issues.csv", build_checks.ISSUE_COLUMNS, rows)
@@ -199,6 +205,46 @@ def test_run_writes_every_issue_and_the_build_times_and_keeps_the_marks(monkeypa
 def read(path: Path) -> list[dict]:
     with path.open(encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def call(name, stdout="", stderr="", code=0, cwd=".", timed_out=False):
+    return {"name": name, "cwd": cwd, "code": code, "stdout": stdout, "stderr": stderr, "seconds": 1.5, "timed_out": timed_out}
+
+
+def test_each_run_keeps_its_exit_code_its_error_and_what_it_built(tmp_path):
+    artifact = '{"reason": "compiler-artifact", "package_id": "%s", "fresh": %s}'
+    cargo = "\n".join([artifact % ("anstyle", "false"), artifact % ("clap_lex", "true"), artifact % ("clap", "false"),
+                       clippy_message("src/lib.rs", 3, "clippy::eq_op"), '{"reason": "build-finished", "success": true}'])
+    vet = '{}\n{\n\t"example.com/m/sub": {}\n}\n'
+    calls = [call("Clippy", cargo, "warning: unused manifest key\n", cwd=str(tmp_path / "crates" / "a")),
+             call("go vet", vet, "# example.com/m/sub\nvet: sub/b.go:5:2: undefined: Printz\n", code=1, cwd=str(tmp_path)),
+             call("staticcheck", "", "", cwd=str(tmp_path)),
+             call("Clippy", "", "", code=None, cwd=str(tmp_path), timed_out=True)]
+    assert build_checks.runs(str(tmp_path), calls) == [
+        {"program": "Clippy", "folder": "crates/a", "code": 0, "stderr": "warning: unused manifest key", "seconds": 1.5, "timed_out": False,
+         "built": 3, "compiled": 2},
+        # go vet's `# package` lines aren't its error.
+        {"program": "go vet", "folder": ".", "code": 1, "stderr": "vet: sub/b.go:5:2: undefined: Printz", "seconds": 1.5, "timed_out": False,
+         "built": 2},
+        {"program": "staticcheck", "folder": ".", "code": 0, "stderr": "", "seconds": 1.5, "timed_out": False},
+        {"program": "Clippy", "folder": ".", "code": None, "stderr": "", "seconds": 1.5, "timed_out": True, "built": 0, "compiled": 0},
+    ]
+    # Only a run that finished having built nothing built nothing.
+    assert [build_checks.built_nothing(run) for run in build_checks.runs(str(tmp_path), calls)] == [False, False, False, False]
+    assert build_checks.built_nothing(build_checks.runs(str(tmp_path), [call("Clippy", '{"reason": "build-finished"}')])[0])
+    # Before Go 1.24 or so the report went to stderr, which isn't the error either.
+    old_go = build_checks.runs(str(tmp_path), [call("go vet", "", "# example.com/m\n{}\n", cwd=str(tmp_path))])
+    assert (old_go[0]["stderr"], old_go[0]["built"]) == ("", 1)
+
+
+def test_the_disk_numbers_are_the_free_space_and_the_clone_and_its_target_folder(tmp_path):
+    clone = tmp_path / "acme__widget"
+    write(clone, {"a.go": "x" * 2_000_000})
+    write(tmp_path / "acme__widget.target", {"debug/a.rmeta": "y" * 3_000_000, "debug/b.rmeta": "z" * 500_000})
+    space = build_checks.disk(clone)
+    assert (space["clone_mb"], space["target_mb"]) == (2.0, 3.5) and space["free_mb"] > 0
+    assert build_checks.disk(tmp_path / "acme__widget")["target_mb"] == 3.5
+    assert build_checks.size(tmp_path / "nothing here") == 0
 
 
 def test_only_the_projects_asked_for_are_run():
@@ -214,9 +260,10 @@ def test_only_the_projects_asked_for_are_run():
 # ── the summary ──────────────────────────────────────────────────────────
 
 
-def pr(repo, number, order, seconds, notes=(), lines=None):
+def pr(repo, number, order, seconds, notes=(), lines=None, runs=(), disk=None):
     return {"repo": repo, "pr": number, "head": "a" * 40, "order": order, "error": "", "seconds": seconds,
-            "lines": lines or {"go vet": 1, "Clippy": 1}, "notes": list(notes), "toolchains": {}}
+            "lines": lines or {"go vet": 1, "Clippy": 1}, "notes": list(notes), "toolchains": {}, "runs": list(runs),
+            **({"disk": disk} if disk else {})}
 
 
 def issue(case, tool, code, kept, verdict):
@@ -231,7 +278,10 @@ def test_score_adds_up_the_marks_and_the_build_times_of_each_project(tmp_path):
                 pr("gin-gonic/gin", 2, 1, {"go vet": 20.0}, ["go vet couldn't build every package of the module (`x`), so its findings there are missing."]),
                 pr("gin-gonic/gin", 1, 2, {"go vet": 40.0})],
          [issue("gin-gonic/gin#3", "go vet", "printf", "yes", "right"), issue("gin-gonic/gin#3", "go vet", "composites", "no", "wrong")]),
-        ("rust", [pr("tokio-rs/tokio", 9, 0, {"Clippy": 700.0}), pr("tokio-rs/tokio", 8, 1, {"Clippy": 30.0})],
+        ("rust", [pr("tokio-rs/tokio", 9, 0, {"Clippy": 700.0}, disk={"free_mb": 80_000.0, "clone_mb": 120.0, "target_mb": 2_500.0}),
+                  pr("tokio-rs/tokio", 8, 1, {"Clippy": 30.0}, disk={"free_mb": 79_000.0, "clone_mb": 121.0, "target_mb": 2_900.0}),
+                  pr("tokio-rs/tokio", 7, 2, {"Clippy": 2.0}, runs=[{"program": "Clippy", "folder": "tokio", "code": 0, "stderr": "",
+                                                                  "seconds": 2.0, "timed_out": False, "built": 0, "compiled": 0}])],
          [issue("tokio-rs/tokio#9", "clippy", "eq_op", "yes", "wrong")]),
     ):
         (out / "raw" / name).mkdir(parents=True)
@@ -239,11 +289,13 @@ def test_score_adds_up_the_marks_and_the_build_times_of_each_project(tmp_path):
         bench._write(out / "raw" / name / "issues.csv", build_checks.ISSUE_COLUMNS, rows)
     build_checks._score(out)
     text = (out / "summary.md").read_text(encoding="utf-8")
-    assert "5 merged PRs from 2 projects" in text
+    assert "6 merged PRs from 2 projects" in text
     assert "| `checks.go_vet` | 3 | 3 | 1 | 1 | 0 | 0 | 1 | 0 (over 300 s) |" in text
-    assert "| `checks.clippy` | 2 | 2 | 1 | 0 | 1 | 0 | 0 | 1 (over 600 s) |" in text
-    assert "| gin-gonic/gin | go vet | 3 | 200 s | 30 s | 200 s | 0 |" in text
-    assert "| tokio-rs/tokio | Clippy | 2 | 700 s | 30 s | 700 s | 1 |" in text
+    # A Clippy run that built nothing is a build that didn't happen, whatever its exit code.
+    assert "| `checks.clippy` | 3 | 3 | 1 | 0 | 1 | 0 | 1 | 1 (over 600 s) |" in text
+    assert "| tokio-rs/tokio#7 | Clippy built nothing in `tokio` (exit code 0) |" in text
+    assert "| gin-gonic/gin | go vet | 3 | 200 s | 30 s | 200 s | 0 |  |  |" in text
+    assert "| tokio-rs/tokio | Clippy | 3 | 700 s | 16 s | 700 s | 1 | 3,021 MB | 79,000 MB |" in text
     assert "| go vet | `composites` | no | 1 | 0 | 1 | 0 |" in text
     assert "| gin-gonic/gin#2 | go vet couldn't build every package" in text
 

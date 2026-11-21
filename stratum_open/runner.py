@@ -84,6 +84,7 @@ class Outcome:
     summary: str = ""
     note: str = ""
     early: publish.Early | None = None  # what `post_early` left for the full review to complete
+    head: str = ""  # the commit the review read, which can be newer than the event's
 
 
 def load_context_policy(gh: GitHub, default_branch: str) -> Policy:
@@ -390,11 +391,11 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
         triage={**(state.triage if held else sorted_pr.as_dict()), "additions": facts.additions, "deletions": facts.deletions},
     )
     if not post:
-        return Outcome(number, "dry-run", findings, sorted_pr, result, publish.render_summary(summary, new_state))
+        return Outcome(number, "dry-run", findings, sorted_pr, result, publish.render_summary(summary, new_state), head=head)
 
     # Don't publish a review of a commit that's no longer the PR's head.
     if gh.pull(number)["head"]["sha"] != head:
-        return Outcome(number, "superseded", findings, sorted_pr, result, note="a newer commit arrived")
+        return Outcome(number, "superseded", findings, sorted_pr, result, note="a newer commit arrived", head=head)
 
     # Each publishing step is its own attempt: GitHub refusing one (a token
     # that lost a permission, a 5xx) must not stop the others, and the check
@@ -453,7 +454,7 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
         ctx.storage.record_review(gh.repo, number, head, score, summary.model_summary, findings)  # the summary as posted
     except Exception as exc:  # the review is on GitHub already; a broken database loses only the App's copy
         ctx.log(redact(f"couldn't store the review: {type(exc).__name__}: {exc}"))
-    return Outcome(number, "published", findings, sorted_pr, result, body)
+    return Outcome(number, "published", findings, sorted_pr, result, body, head=head)
 
 
 def _early_threads(threads: list[dict], early: publish.Early, bot: str) -> dict[str, dict]:

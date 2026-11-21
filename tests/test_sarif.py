@@ -200,9 +200,13 @@ def test_review_of_a_pr_writes_sarif(tmp_path, capsys, monkeypatch):
 # ── the Action ───────────────────────────────────────────────────────────
 
 
+def pr_event(draft=False, head="a" * 40):  # FakeGitHub's PR #7 has the head "a" * 40
+    return {"action": "opened", "repository": {"default_branch": "main"}, "pull_request": {"number": 7, "draft": draft, "head": {"sha": head}}}
+
+
 def run_action(tmp_path, monkeypatch, gh, payload=None, **env):
     event = tmp_path / "event.json"
-    event.write_text(json.dumps(payload or {"action": "opened", "repository": {"default_branch": "main"}, "pull_request": {"number": 7, "draft": False}}))
+    event.write_text(json.dumps(payload or pr_event()))
     monkeypatch.setattr(action, "GitHub", lambda token, repo, api: gh)
     monkeypatch.setattr(action, "model_from_policy", lambda policy, env: FakeModel(model_answer()))
     return action.main({"GITHUB_EVENT_NAME": "pull_request_target", "GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": "acme/widget",
@@ -218,16 +222,20 @@ def test_the_action_writes_sarif_once_the_review_is_posted(tmp_path, monkeypatch
     assert {r["ruleId"] for r in run["results"]} >= {"code/sql", "model/bug"}
 
 
-@pytest.mark.parametrize("change", ["no input", "draft", "closed"])
-def test_the_action_writes_sarif_only_with_the_input_and_for_a_posted_review(tmp_path, monkeypatch, change):
+@pytest.mark.parametrize("change", ["no input", "draft", "closed", "rerun"])
+def test_the_action_writes_sarif_only_with_the_input_and_for_a_posted_review_of_the_events_commit(tmp_path, monkeypatch, capsys, change):
     gh = FakeGitHub(diff=DIFF)
     out = tmp_path / "stratum.sarif"
-    payload = {"action": "opened", "repository": {"default_branch": "main"}, "pull_request": {"number": 7, "draft": change == "draft"}}
+    # rerun: an older run started again after a push. The review reads the PR's head now, and the
+    # upload step would name the event's commit, so the newer commit's lines would go on the older one.
+    payload = pr_event(draft=change == "draft", head="b" * 40 if change == "rerun" else "a" * 40)
     if change == "closed":
         gh.pulls[7]["state"] = "closed"  # closed while the job waited: review_pull skips it
     env = {} if change == "no input" else {"STRATUM_SARIF": str(out)}
     assert run_action(tmp_path, monkeypatch, gh, payload, **env) == 0
     assert not out.exists()
+    if change == "rerun":
+        assert gh.issue_comments_[7] and "SARIF: none written. The review read aaaaaaa, a newer commit than the event's bbbbbbb" in capsys.readouterr().out
     # The same PR, open and ready, with the input.
     assert run_action(tmp_path, monkeypatch, FakeGitHub(diff=DIFF), STRATUM_SARIF=str(out)) == 0
     assert out.exists()

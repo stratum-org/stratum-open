@@ -126,7 +126,7 @@ def _run(env: Mapping[str, str], event_name: str, payload: dict, gh: GitHub, loa
         else:
             outcome = review_pull(ctx, pull["number"])
             print(f"PR #{outcome.number}: {outcome.status}, {len(outcome.findings)} finding(s)" + (f", {outcome.triage.key}" if outcome.triage else ""))
-            _write_sarif(env, outcome.status, outcome.findings)
+            _write_sarif(env, outcome.status, outcome.findings, outcome.head, (pull.get("head") or {}).get("sha", ""))
             if outcome.status != "published" and _early_run(env):  # the early post waits for a review that won't come
                 stop_early(gh, pull["number"], (pull.get("head") or {}).get("sha", ""), bot=ctx.bot, name=policy.review.check_name,
                            run_id=_early_run(env), conclusion=env.get("STRATUM_EARLY_CONCLUSION", ""))
@@ -233,13 +233,21 @@ def _early_run(env: Mapping[str, str]) -> int:
     return int(raw) if raw.isdigit() else 0
 
 
-def _write_sarif(env: Mapping[str, str], status: str, findings: list) -> None:
+def _write_sarif(env: Mapping[str, str], status: str, findings: list, reviewed: str, event: str) -> None:
     """The `sarif` input (STRATUM_SARIF): a posted review's findings as SARIF, for the workflow's
     upload step. A review that wasn't posted (a newer commit arrived, or the PR closed) writes
-    none. The review is on the PR by now, so a file that can't be written is a warning, and
-    the job's failure path can't replace the review's check run with a "couldn't finish" one."""
+    none. Nor does one of a newer commit than the event's (`reviewed`, the PR's head when the
+    review started, against `event`): the upload step names the event's commit, and the lines
+    are the newer one's. That's a re-run of an older run after a push, and the push's own run
+    writes the file. The review is on the PR by now, so a file that can't be written is a
+    warning, and the job's failure path can't replace the review's check run with a
+    "couldn't finish" one."""
     path = (env.get("STRATUM_SARIF") or "").strip()
     if not path or status != "published":
+        return
+    if reviewed != event:
+        print(f"SARIF: none written. The review read {reviewed[:7]}, a newer commit than the event's {event[:7] or '(none)'}, "
+              "which the upload step names; that commit's own run writes the file.")
         return
     try:
         from stratum_open.sarif import write

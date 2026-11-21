@@ -23,8 +23,9 @@ today's commit emails to match the login.
 Requests: two for the run (the repo, its policy) and one per 100 PRs listed;
 then per PR one for the diff, three for CI (check runs, statuses, and, unless
 a check failed, the workflow runs, for one held for approval, plus one per
-workflow run started again after the PR closed), and one per file the checks
-read in full (workflows, manifests, Python files).
+workflow run started again after the PR closed), one for its commits (the
+first 100, for whether a coding agent wrote it, which a replay always shows),
+and one per file the checks read in full (workflows, manifests, Python files).
 
 The report comes as the table for the terminal (`render`), as Markdown to
 paste into an issue, a discussion or a job summary (`render_markdown`), or as
@@ -47,6 +48,7 @@ from typing import Callable, NamedTuple
 import requests
 
 from stratum_open import __version__
+from stratum_open.agent_prs import detect
 from stratum_open.diff import parse_diff
 from stratum_open.github.api import GitHub, GitHubError
 from stratum_open.platform import CI
@@ -115,6 +117,7 @@ class Row:
     files: int = 0
     note: str = ""
     url: str = ""  # the PR's page on GitHub
+    agent: dict = field(default_factory=dict)  # whether a coding agent wrote it: {"verdict": likely | possible | no, "signals": [...]}
 
 
 @dataclass
@@ -203,13 +206,15 @@ def _row(ctx: Context, pull: dict, default_branch: str) -> Row:
         facts.additions, facts.deletions = sum(f.additions for f in files), sum(f.deletions for f in files)
         facts.ci = gh.ci_state_at(row.head, row.closed_at, ignore={policy.review.check_name, ACTION_JOB, QUEUE_JOB})
         facts.linked_issues = closing_issues(pull, default_branch)
+        agent = detect(pull, facts.paths, gh.pull_commits(row.number))
     except GitHubError as exc:
         if exc.status in (401, 403, 429):  # the token is refused or out of requests: the next PR would fare no better
             raise
         row.note = f"Couldn't read it: GitHub answered {exc.status}."
         return row
     # No record: see the module's docstring.
-    result = triage(facts, engine.findings, engine.policy, record=None)
+    result = triage(facts, engine.findings, engine.policy, record=None, agent=agent)
+    row.agent = {"verdict": agent.verdict, "signals": [signal.kind for signal in agent.signals]}
     row.key, row.reasons, row.evidence, row.score = result.key, result.reasons, result.evidence, round(result.score, 2)
     by_rule = Counter(f.rule for f in engine.findings)
     row.findings = dict(sorted(by_rule.items(), key=lambda item: (-item[1], item[0])))
@@ -292,6 +297,7 @@ COLUMNS = [
     Column("Label", lambda policy, row: _label(policy, row.key)),
     Column("Why", lambda policy, row: row.note or " ".join(row.reasons or row.evidence)),
     Column("Checks' findings", lambda policy, row: ", ".join(f"`{rule}` {n}" for rule, n in row.findings.items()), limit=2000),
+    Column("Coding agent", lambda policy, row: _agent(row)),
 ]
 CAVEAT = ("No model reviewed these PRs and no author's track record was counted, so each label rests on the checks and the PR's "
           "facts alone. The end of the report says what else a replay can't rebuild.")
@@ -425,6 +431,13 @@ def _request_count(report: Report) -> list[str]:
     if report.requests is None:
         return []
     return [f"GitHub requests: {report.requests}, about {report.requests / len(report.rows):.1f} per PR.", ""]
+
+
+def _agent(row: Row) -> str:
+    """Whether a coding agent wrote the PR, and the signals that said so:
+    "likely: author, commits", "no", or "" for a PR that wasn't replayed."""
+    signals = row.agent.get("signals")
+    return row.agent.get("verdict", "") + (": " + ", ".join(signals) if signals else "")
 
 
 def _label(policy: Policy, key: str) -> str:

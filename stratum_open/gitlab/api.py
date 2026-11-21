@@ -238,6 +238,13 @@ class GitLab:
         data = self.get(f"{self._mr(number)}/changes") or {}
         return [c for c in data.get("changes") or [] if isinstance(c, dict)]
 
+    def pull_commits(self, number: int) -> list[dict]:
+        """The MR's first 100 commits in GitHub's shape: one request."""
+        commits = self.request("GET", f"{self._mr(number)}/commits", params={"per_page": PER_PAGE}) or []
+        return [{"sha": c.get("id") or "", "commit": {"message": c.get("message") or "",
+                                                      "author": {"name": c.get("author_name") or "", "email": c.get("author_email") or ""}}}
+                for c in commits if isinstance(c, dict)]
+
     def linked_issues(self, number: int) -> list[int]:
         return [i["iid"] for i in self.paginate(f"{self._mr(number)}/closes_issues") if isinstance(i.get("iid"), int)]
 

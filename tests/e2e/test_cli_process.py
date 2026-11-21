@@ -127,9 +127,10 @@ def test_replay_reads_closed_prs_and_writes_nothing(fake_github, fake_model, tmp
     assert "| #7 Add a thing | merged | triage: needs work |" in report.read_text(encoding="utf-8")
     assert {r["method"] for r in fake_github.requests} == {"GET"}
     assert fake_github.posted_text() == "" and not fake_github.labels and not fake_github.closed
-    # The repo, its policy and the list; then a PR's diff, its three CI reads and, for Bandit, its Python file.
+    # The repo, its policy and the list; then a PR's diff, its three CI reads, its commits and, for Bandit, its Python file.
     # #7's CI had failed, so its workflow runs aren't read.
-    assert data["requests"] == len(fake_github.requests) == 3 + 2 * (4 + bandit.available()) - 1
+    assert data["requests"] == len(fake_github.requests) == 3 + 2 * (5 + bandit.available()) - 1
+    assert [p["agent"] for p in data["pulls"]] == [{"verdict": "no", "signals": []}] * 2
     assert fake_github.token not in result.stdout + result.stderr
 
 
@@ -222,6 +223,18 @@ def test_action_reviews_a_pr_event(fake_github, fake_model, tmp_path):
     fake_github.add_pull(7, diff=DIFF)
     result = run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, pr_payload()))
     assert result.returncode == 0 and "PR #7: published" in result.stdout, result.stderr
+    assert_contract(fake_github, number=7, head=HEAD, stderr=result.stderr, stdout=result.stdout)
+
+
+def test_action_labels_a_coding_agents_pr(fake_github, fake_model, tmp_path):
+    fake_github.add_pull(7, diff=DIFF, author="devin-ai-integration[bot]",
+                         body="Adds the user lookup.\n\nLink to Devin session: https://app.devin.ai/sessions/2931bc3673eb42ce")
+    fake_github.set_policy("triage:\n  enabled: true\n  agent_prs:\n    label: true\n")
+    result = run_stratum(["action"], env=action_env(fake_github, fake_model, tmp_path, pr_payload()))
+    assert result.returncode == 0 and "PR #7: published" in result.stdout, result.stderr
+    assert "triage: agent-written" in fake_github.labels_on(7)
+    assert ("**Likely written by a coding agent:** the author is `devin-ai-integration[bot]` (Devin); the description carries Devin's "
+            "footer (`app.devin.ai/sessions/`).") in fake_github.summary_comments(7)[0]["body"]
     assert_contract(fake_github, number=7, head=HEAD, stderr=result.stderr, stdout=result.stdout)
 
 

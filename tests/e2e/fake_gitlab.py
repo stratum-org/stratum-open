@@ -52,6 +52,7 @@ class FakeGitLabServer:
         self.status_history: list[tuple[int, str]] = []  # (status id, state) for each post
         self.labels: dict[str, dict[str, Any]] = {}
         self.closes: dict[int, list[int]] = {}
+        self.mr_commits: dict[int, list[dict[str, Any]]] = {}  # iid -> its commits, as /merge_requests/:iid/commits lists them
         self.parents: dict[str, str] = {}  # head -> the head before it, for merge_base
         self.changed: dict[tuple[str, str], list[str]] = {}  # (from, to) -> paths, for compare
         self.users: dict[str, dict[str, Any]] = {}
@@ -355,6 +356,8 @@ def _handler(fake: FakeGitLabServer) -> type[BaseHTTPRequestHandler]:
                 return 200, {**mr, "changes": fake.diffs[iid], "overflow": False}, {}
             if rest == ["closes_issues"] and method == "GET":
                 return self._page([{"iid": n, "id": 100 + n} for n in fake.closes.get(iid, [])], q, s)
+            if rest == ["commits"] and method == "GET":
+                return self._page(fake.mr_commits.get(iid, []), q, s)
             if rest == ["notes"]:
                 if method == "GET":
                     notes = list(fake.notes[iid])

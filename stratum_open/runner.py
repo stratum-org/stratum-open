@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import json
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable
 
+from stratum_open import agent_prs
 from stratum_open.checks.tools import Worktree
 from stratum_open.diff import FileDiff, parse_diff, sendable
 from stratum_open.engine import EngineResult, analyze, default_conclusion, effective_policy, snippet_of  # noqa: F401  (effective_policy: re-exported)
@@ -215,13 +216,17 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
 
     notes, hotspots, boundary, file_notes = _history(ctx, files, pull)
     record = _record(ctx, pull)
+    agent = _agent(ctx, pull, paths, problems)
+    # `review.agent_prs_logic_pass`: the logic pass, on this PR only.
+    logic = reads and agent is not None and agent.likely and ctx.policy.review.agent_prs_logic_pass and not ctx.policy.review.logic_pass
+    review_policy = replace(ctx.policy, review=replace(ctx.policy.review, logic_pass=True)) if logic else ctx.policy
     muted = sorted(ctx.storage.muted_rules(gh.repo)) if ctx.feedback else []
     learned = feedback.learn(gh, ctx.bot, lookback=ctx.policy.review.learn_lookback) if ctx.policy.review.learn_from_history else None
     # Whether the profile shows code around each hunk, so the files' text is worth fetching.
     around = ctx.model is not None and effective_policy(ctx.policy, ctx.model)[0].review.context_lines > 0
     contents = _contents(ctx, files, head, around=around)
     engine = analyze(
-        title=pull.get("title") or "", description=pull.get("body") or "", files=files, policy=ctx.policy, model=ctx.model,
+        title=pull.get("title") or "", description=pull.get("body") or "", files=files, policy=review_policy, model=ctx.model,
         contents=contents, lookup=ctx.lookup, only_paths=changed if retry else set(), first=retried, worktree=worktree_for(ctx, pull),
         previous=state.findings,
         notes=notes, hotspots=hotspots, file_notes=file_notes, extra_findings=boundary,
@@ -350,11 +355,13 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
     sorted_pr = triage(
         facts, findings, policy,
         matches_description=result.matches_description if result else "", mismatch=result.mismatch if result else "",
-        record=record,
+        record=record, agent=agent,
     )
 
     coverage = _large_coverage(large) + _coverage(result, incremental, changed - retried if changed is not None else None, state.head, files,
                                                  contents or {}, retried & read, engine.unread, policy=policy) + engine.check_notes
+    if logic:
+        coverage.append("The logic pass is on for this PR, since a coding agent likely wrote it (`review.agent_prs_logic_pass`).")
     if ctx.model is not None:
         coverage.append(f"Profile: `{engine.profile}` ({engine.profile_why}).")
         if engine.model_settings:
@@ -373,6 +380,7 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
         triage=sorted_pr, notes=notes, coverage=coverage, problems=problems,
         muted=sorted(set(muted) | set(learned.rules)) if learned else muted,
         **_walkthrough(large, findings), hidden=_hidden_line(hidden, learned, number), label_held=held,
+        agent=agent.line() if agent is not None else "",
     )
     # The next review reads what changed since this head, plus `unread`, so
     # it reads those again rather than calling a review it never finished
@@ -437,8 +445,13 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
         ctx.log(f"couldn't publish the check run: {exc}")
 
     if policy.triage.enabled and not facts.draft:
+        labels = [label.get("name", "") for label in pull.get("labels") or [] if isinstance(label, dict)]
+        if agent is not None and policy.triage.agent_prs.label:
+            try:
+                publish.apply_agent_label(gh, number, policy, agent.likely, agent.commits_read, labels)
+            except GitHubError as exc:
+                ctx.log(f"couldn't apply the coding-agent label: {exc}")
         try:
-            labels = [label.get("name", "") for label in pull.get("labels") or [] if isinstance(label, dict)]
             if not held:
                 publish.apply_label(gh, number, policy, sorted_pr.key, labels)
             # Only on a lookup that worked and found none: a failed one is no reason to close a PR.
@@ -730,6 +743,20 @@ def check_pull(ctx: Context, pull: dict, files: list[FileDiff]) -> EngineResult:
         title=pull.get("title") or "", description=pull.get("body") or "", files=files, policy=ctx.policy, model=None,
         contents=_contents(ctx, files, pull["head"]["sha"]), lookup=ctx.lookup, extra_findings=boundary, worktree=worktree_for(ctx, pull),
     )
+
+
+def _agent(ctx: Context, pull: dict, paths: list[str], problems: list[str]) -> agent_prs.AgentResult | None:
+    """Whether a coding agent wrote the PR, when the policy asks
+    (`triage.agent_prs`, `review.agent_prs_logic_pass`); None when it
+    doesn't, and then nothing is read. The commits are one more request."""
+    if not agent_prs.wanted(ctx.policy):
+        return None
+    try:
+        commits = ctx.gh.pull_commits(pull["number"])
+    except GitHubError as exc:
+        problems.append(f"Couldn't read the PR's commits ({exc.status}), so the coding-agent check went without them.")
+        commits = None
+    return agent_prs.detect(pull, paths, commits)
 
 
 def _record(ctx: Context, pull: dict) -> AuthorRecord | None:

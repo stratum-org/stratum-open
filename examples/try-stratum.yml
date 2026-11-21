@@ -8,7 +8,7 @@
 # on a private repo it holds your PR titles.
 #
 # The workflow's token may make 1,000 API requests an hour in a repo, and a PR
-# takes about 5, so 50 PRs take about 260. If GitHub's rate limit stops the
+# takes about 6, so 50 PRs take about 310. If GitHub's rate limit stops the
 # replay anyway, the summary says how far it got and when the limit resets.
 name: Try Stratum
 

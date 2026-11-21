@@ -241,6 +241,11 @@ class GitHub:
             parts.append(header + (file.get("patch") or "Binary files differ") + "\n")
         return "".join(parts)
 
+    def pull_commits(self, number: int) -> list[dict]:
+        """The PR's first 100 commits, oldest first: one request, whatever
+        the PR's size (GitHub lists 250 at most anyway)."""
+        return self.request("GET", f"{self._r}/pulls/{number}/commits", params={"per_page": 100}) or []
+
     def commit_emails(self, login: str) -> set[str]:
         """Emails on this login's recent commits here; GitHub links them to
         the account, git history only has the emails."""

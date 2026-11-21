@@ -36,7 +36,7 @@ uvx stratum-open replay owner/repo
 pipx run stratum-open replay owner/repo
 ```
 
-It needs a GitHub token, from `GITHUB_TOKEN` or the GitHub CLI (`gh auth login`): a PR takes about 5 API requests, and GitHub allows 60 an hour without a token. If GitHub's rate limit stops it anyway, it says how far it got and when the limit resets.
+It needs a GitHub token, from `GITHUB_TOKEN` or the GitHub CLI (`gh auth login`): a PR takes about 6 API requests, and GitHub allows 60 an hour without a token. If GitHub's rate limit stops it anyway, it says how far it got and when the limit resets.
 
 From the release after 0.3.0, `--format markdown` gives a report to paste into an issue or a discussion, and `--format html --out replay.html` one page to open in a browser. Both start with the labels against what became of the PRs, then the PRs where the two disagree (marked ready but closed, or marked needs work but merged), and both say what a replay can't rebuild, such as the model's review. The Markdown report writes PR and issue numbers in code, so GitHub doesn't link them: pasted into an issue, a linked number would add a "mentioned this" line to that PR or issue, one for each PR in the report. The HTML page links each PR.
 
@@ -124,10 +124,33 @@ GitHub's Ubuntu runners come with Go, and with Rust and Clippy. If your `go.mod`
   - code that only one person has changed lately;
   - hotspots that change often and are complex, or keep needing reverts and hotfixes, which get a stricter review;
   - who owns the changed files, from CODEOWNERS.
-- **One triage label:** `ready`, `needs work`, `low effort` or `needs a maintainer`, with the reasons spelled out. It judges what's in front of it: CI, tests, a linked issue, size, and whether the change matches its description. CI that GitHub holds until a maintainer approves the workflows, as on a first-time contributor's PR, is never a pass: the PR gets `needs a maintainer`, or `needs work` or `low effort` if the author has something to fix. Once the workflows have run, the PR is sorted again if your workflow re-sorts PRs when CI finishes (the optional `workflow_run` trigger in [examples/stratum.yml](examples/stratum.yml)); otherwise the label stays until the next push or `/stratum review`. It doesn't try to guess whether AI wrote the PR, because detectors for that aren't reliable. Labels are off until your policy turns them on, and it closes nothing unless your policy says so.
+- **One triage label:** `ready`, `needs work`, `low effort` or `needs a maintainer`, with the reasons spelled out. It judges what's in front of it: CI, tests, a linked issue, size, and whether the change matches its description. CI that GitHub holds until a maintainer approves the workflows, as on a first-time contributor's PR, is never a pass: the PR gets `needs a maintainer`, or `needs work` or `low effort` if the author has something to fix. Once the workflows have run, the PR is sorted again if your workflow re-sorts PRs when CI finishes (the optional `workflow_run` trigger in [examples/stratum.yml](examples/stratum.yml)); otherwise the label stays until the next push or `/stratum review`. It doesn't guess from the code who wrote the PR; [PRs written by coding agents](#prs-written-by-coding-agents) says what it can tell instead, when your policy asks. Labels are off until your policy turns them on, and it closes nothing unless your policy says so.
 - **A check run** that fails on a critical finding and is neutral on a high one. Make it required in branch protection if you want it to block merging.
 - **A triage queue:** one issue listing every open PR, cheapest to review and best supported first. The example workflow rebuilds it once a day, and from the release after 0.3.0 also after each review or label-changing command, and when a PR closes or turns back into a draft ([Upgrading from 0.3.0](#upgrading-from-030)). A rebuild needs no model. From the release after 0.3.0 it reads the open PRs and their comments in one GraphQL query per 50 PRs, which GitHub [counts as 1 point](https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api) of the 1,000 an hour that `GITHUB_TOKEN` gets for GraphQL: 2 points for 100 open PRs, plus 1 for each further 100 comments on a PR with more than 100. If GitHub gives up on 50 PRs within its 10-second limit on a query, the rebuild asks for 10 at a time instead. Its only REST calls, out of the token's separate 1,000 an hour that the reviews share, are the issue list (one call per 100 open issues and PRs, until it finds the queue issue) and the edit. 0.3.0 makes one REST call per open PR instead. After an event it waits a minute, and a newer event cancels it while it waits, so a burst costs one rebuild. `triage.queue: false` stops rebuilding it, and `stratum-open triage --post` then refuses to post it; close the issue yourself. The GitHub App keeps one too ([GitHub App](#other-ways-to-run-it)).
 - **Track records:** each author's merged PRs that were later reverted or fixed, read from git history. Every contributor can see their own, with `/stratum record`. A record affects nothing unless your policy says so.
+
+### PRs written by coding agents
+
+Coding agents leave their own signatures on the PRs they open, and Stratum can read them. It doesn't guess from the code: a person who used an editor's completions leaves none of these.
+
+| Signal | Example | Strength |
+| --- | --- | --- |
+| The PR's author is an agent's account | `Copilot`, `devin-ai-integration[bot]` | Strong |
+| A commit is by an agent, or names one in a `Co-authored-by:` trailer | `cursoragent@cursor.com` | Strong |
+| The description has an agent's footer | a `chatgpt.com/codex/tasks/` link | Medium |
+| The branch is named the way an agent names its own | `copilot/...`, `devin/...`, `cursor/...` | Weak |
+| The PR changes the files that steer agents | `AGENTS.md`, `.cursor/rules/**` | Weak |
+
+A strong or medium signal makes the PR *likely* written by a coding agent; weak ones alone make it *possible*, which is a line in the summary and changes nothing else. The accounts, addresses, footers and branch names are in [`stratum_open/agent_prs.yml`](stratum_open/agent_prs.yml), each with a public PR or the vendor's docs that shows it; add an agent there.
+
+It's all off by default. Any of these keys turns it on, and each review then reads the PR's commits (one more API call) and says in the summary which signals fired:
+
+- `triage.agent_prs.label: true` adds `triage: agent-written` (`triage.labels.agent_written`) to a likely PR, when `triage.enabled` is on. The label says who probably wrote the PR, not whether it's any good;
+- `triage.agent_prs.needs_maintainer: true` sorts a likely PR as `needs a maintainer`;
+- `triage.agent_prs.require_tests: true` sorts a likely PR that changes code and no test as `needs work`;
+- `review.agent_prs_logic_pass: true` runs `review.logic_pass` on likely PRs only.
+
+`stratum-open replay owner/repo` shows the result on each of your closed PRs, with whatever your policy says, so you can see what it would mark before you turn it on. Set the keys back to `false` to turn it off.
 
 ## Your rules: `.stratum/policy.yml`
 

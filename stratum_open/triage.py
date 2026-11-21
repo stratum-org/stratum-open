@@ -4,8 +4,9 @@ and best supported by evidence.
 
 It judges what's in the PR: tests, CI, a linked issue, whether the change
 matches its description, its size and, only if the policy says so, the
-author's track record. It never guesses whether AI wrote it; detectors for
-that aren't reliable.
+author's track record. It doesn't guess from the code who wrote it. With
+`triage.agent_prs`, a PR that carries a coding agent's own signatures
+(agent_prs.py) can be sorted as the maintainers ask.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from stratum_open.findings import Finding
 from stratum_open.platform import CI
@@ -20,6 +22,9 @@ from stratum_open.policy import Policy
 from stratum_open.review import demention
 from stratum_open.track_record import AuthorRecord
 from stratum_open.util import count
+
+if TYPE_CHECKING:
+    from stratum_open.agent_prs import AgentResult
 
 KEYS = ("needs_human", "needs_work", "low_effort", "ready")
 COLORS = {"ready": "0e8a16", "needs_work": "d93f0b", "low_effort": "fbca04", "needs_human": "5319e7"}
@@ -37,6 +42,9 @@ MIN_DESCRIPTION_CHARS = 40
 # GitHub holds an outside contributor's `pull_request` workflows until a maintainer approves them
 # (first-time contributors by default; every outside collaborator, if the repo says so).
 HELD = "CI hasn't run: a maintainer needs to approve the workflows. Comment `/stratum review` once they've run to sort it again."
+AGENT_HUMAN = "Likely written by a coding agent, and this project has a maintainer look at those (`triage.agent_prs.needs_maintainer`)."
+AGENT_TESTS = ("Likely written by a coding agent, and it changes code with no test changes; this project asks for tests on those "
+               "(`triage.agent_prs.require_tests`).")
 
 
 @dataclass
@@ -104,8 +112,16 @@ def triage(
     matches_description: str = "",
     mismatch: str = "",
     record: AuthorRecord | None = None,
+    agent: AgentResult | None = None,
 ) -> Triage:
+    """`agent`: whether a coding agent wrote the PR; only `likely` counts, and
+    only under `triage.agent_prs`."""
     needs_human = _needs_human_reasons(findings)
+    agent_rules = policy.triage.agent_prs if agent is not None and agent.likely else None
+    if agent_rules and agent_rules.needs_maintainer:
+        needs_human.append(AGENT_HUMAN)
+    code_paths = [p for p in facts.paths if not is_doc(p) and not is_test(p)]
+    tests_changed = any(is_test(p) for p in facts.paths)
 
     needs_work = []
     if facts.ci == CI.FAILED:
@@ -117,14 +133,14 @@ def triage(
         needs_work.append("No linked issue, and this project asks for one.")
     if matches_description == "no":
         needs_work.append("The code doesn't do what the description says" + (f": {mismatch}" if mismatch else "."))
+    if agent_rules and agent_rules.require_tests and code_paths and not tests_changed:
+        needs_work.append(AGENT_TESTS)
     # Untested code from outside is never ready. It's the author's first if there's something to
     # fix, or the PR shows little effort; otherwise a maintainer has to let CI run.
     held = facts.ci == CI.HELD
     if held and needs_work:
         needs_work.append(HELD)
 
-    code_paths = [p for p in facts.paths if not is_doc(p) and not is_test(p)]
-    tests_changed = any(is_test(p) for p in facts.paths)
     described = description_length(facts.body) >= MIN_DESCRIPTION_CHARS
     struck = _struck_share(record) if policy.track_record.affects_triage else None
 

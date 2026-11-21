@@ -39,6 +39,7 @@ review:
   logic_pass: false            # true adds one call per chunk that looks only for logic errors (a condition the wrong way round, an off-by-one,
                                #   `and` for `or`), working through the added lines that make a decision one at a time
                                #   With `context_lines: 10`, `gpt-oss:20b` found 27 of 39 planted bugs against 18 without both; a review takes 2-4x as long
+  agent_prs_logic_pass: false  # true runs that logic pass only on a PR a coding agent likely wrote (see triage.agent_prs)
   rules: []                    # your own review rules in plain words, e.g. "Every SQL query is parameterized."
   ignore_paths: ["**/*.lock", "**/package-lock.json", "**/pnpm-lock.yaml", "**/go.sum",
                  "**/*.min.js", "**/*.min.css", "**/*.map", "**/*.svg", "**/*.snap",
@@ -103,10 +104,17 @@ triage:
     needs_work: "triage: needs work"
     low_effort: "triage: low effort"
     needs_human: "triage: needs a maintainer"
+    agent_written: "triage: agent-written"   # with agent_prs.label; it says who probably wrote the PR, not whether it's good
   label_low_effort: true
   require_linked_issue: false  # true labels PRs with no linked issue "needs work"
   close_without_issue: false   # true closes them, with a comment saying why
   queue: true                  # the "Stratum triage queue" issue; false stops rebuilding it (close the issue yourself)
+  agent_prs:                   # PRs a coding agent likely wrote, by the signatures agents leave (README: PRs written by coding agents).
+                               #   Any key here, or review.agent_prs_logic_pass, adds a line on it to the summary and reads the PR's
+                               #   commits (one more API call). Weak signals alone (the branch name, an agent file) change nothing.
+    label: false               # true adds labels.agent_written to such a PR (with enabled: true)
+    needs_maintainer: false    # true sorts such a PR as "needs a maintainer"
+    require_tests: false       # true sorts such a PR "needs work" when it changes code and no test
 
 track_record:
   enabled: true                # each contributor can always see their own

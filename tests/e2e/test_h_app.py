@@ -482,3 +482,29 @@ def test_the_app_keeps_the_triage_queue_issue(fake_github, tmp_path, monkeypatch
     assert server.rebuild_due() == ["acme/widget"]
     assert len(fake_github.requests_to("PATCH", r"/issues/\d+$")) == edits and "#9" not in fake_github.issues[0]["body"]
     assert logs == []
+
+
+def test_the_app_labels_a_coding_agents_pr(fake_github, fake_model, tmp_path, monkeypatch):
+    class Auth:
+        api = fake_github.url
+
+        def token(self, installation_id):
+            return fake_github.token
+
+        def bot_login(self):
+            return fake_github.bot
+
+    with monkeypatch.context() as patch:  # no workers or loops: the test runs the job itself
+        patch.setattr("threading.Thread.start", lambda self: None)
+        server = Server(Auth(), SECRET.decode(), SQLiteStorage(str(tmp_path / "s.db")), str(tmp_path / "repos"),
+                        env={"STRATUM_MODEL_ENDPOINT": fake_model.url}, workers=0, log=lambda line: None)
+    monkeypatch.setattr(server, "checkout", lambda *args: None)  # no clone of github.com
+    fake_github.add_pull(7, diff=DIFF, author="Copilot")
+    fake_github.pr_commits[7] = [{"sha": HEAD, "commit": {"message": "Add the lookup", "author": {
+        "name": "copilot-swe-agent[bot]", "email": "198982749+Copilot@users.noreply.github.com"}}}]
+    fake_github.set_policy("triage:\n  enabled: true\n  agent_prs:\n    label: true\n")
+    fake_model.queue(Response.ok(json_reply([])))
+    server.run("pull_request", json.loads(pr_event(action="opened")))
+    assert "triage: agent-written" in fake_github.labels_on(7)
+    assert "**Likely written by a coding agent:** the author is `Copilot` (GitHub Copilot)" in fake_github.summary_comments(7)[0]["body"]
+    assert server.storage.export("acme/widget")["jobs"][-1]["outcome"] == "published"

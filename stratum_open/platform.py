@@ -15,6 +15,8 @@ The shapes, as the runner and `publish` read them:
   "user": {"login", "type"} | None, "head": {"sha", "ref"}, "labels":
   [{"name"}], "additions", "deletions"}.
 - `issue_comments(number)`: oldest first, [{"id", "body", "user": {"login"}}].
+- `pull_commits(number)`: the first 100 of the PR's commits, [{"sha",
+  "commit": {"message", "author": {"name", "email"}}}], for `triage.agent_prs`.
 - `review_threads(number)`: [{"id", "resolved", "path", "comments": [{"id",
   "body", "author"}]}], the first comment being the one that opened the thread.
 - `create_review(number, head_sha, comments)`: each comment is {"path",
@@ -55,6 +57,8 @@ class Platform(Protocol):
     def pull(self, number: int) -> dict: ...
 
     def pull_diff(self, number: int) -> str: ...  # a unified diff, as `git diff` writes it
+
+    def pull_commits(self, number: int) -> list[dict]: ...  # one request: the first 100
 
     def file_text(self, path: str, ref: str, *, max_bytes: int | None = None) -> str | None: ...
 

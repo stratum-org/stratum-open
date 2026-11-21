@@ -204,3 +204,33 @@ def test_a_queue_issue_by_someone_else_is_not_edited(fake_github, make_context):
     fake_github.issues.append({"number": 50, "title": TITLE, "body": "mine", "state": "open", "user": {"login": "mallory"}})
     update_queue(make_context(model=None), post=True)
     assert len(fake_github.issues) == 2 and fake_github.issues[0]["body"] == "mine"
+
+
+# ── PRs written by coding agents (triage.agent_prs) ──────────────────────
+
+AGENT_LABEL = ON + "  agent_prs:\n    label: true\n"
+COPILOT_COMMIT = {"sha": HEAD, "commit": {"message": "Keep the row", "author": {"name": "copilot-swe-agent[bot]",
+                                                                              "email": "198982749+Copilot@users.noreply.github.com"}}}
+
+
+def test_a_coding_agents_pr_gets_the_label_and_the_line_and_costs_one_request(fake_github, make_context, fake_model, logs):
+    fake_github.add_pull(7, diff=DIFF, author="Copilot")
+    fake_github.pr_commits[7] = [COPILOT_COMMIT]
+    fake_model.queue(Response.ok(json_reply([])))
+    review_pull(make_context(policy_text=AGENT_LABEL), 7)
+    assert "triage: agent-written" in fake_github.labels_on(7) and "triage: agent-written" in fake_github.labels
+    body = fake_github.summary_comments(7)[0]["body"]
+    assert ("**Likely written by a coding agent:** the author is `Copilot` (GitHub Copilot); its commit is by or co-authored by "
+            "GitHub Copilot.") in body
+    assert len(fake_github.requests_to("GET", r"/pulls/7/commits$")) == 1
+    assert "Likely written by a coding agent" in fake_github.check_runs_for(HEAD)[-1]["output"]["summary"]
+    assert_contract(fake_github, number=7, head=HEAD, logs=logs)
+
+
+def test_with_the_agent_keys_off_the_commits_arent_read(fake_github, make_context, fake_model, logs):
+    fake_github.add_pull(7, diff=DIFF, author="Copilot")
+    fake_github.pr_commits[7] = [COPILOT_COMMIT]
+    fake_model.queue(Response.ok(json_reply([])))
+    review_pull(make_context(policy_text=ON), 7)
+    assert fake_github.requests_to("GET", r"/pulls/7/commits$") == []
+    assert "triage: agent-written" not in fake_github.labels_on(7) and "coding agent" not in fake_github.summary_comments(7)[0]["body"]

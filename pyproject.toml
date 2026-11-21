@@ -36,6 +36,10 @@ mcp = ["mcp>=2,<3"]
 [tool.setuptools]
 packages = ["stratum_open", "stratum_open.checks", "stratum_open.repo", "stratum_open.github", "stratum_open.gitlab"]
 
+[tool.setuptools.package-data]
+# The coding agents' signatures, for triage.agent_prs.
+stratum_open = ["agent_prs.yml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # The live end-to-end tests need a real model; `pytest -m live` runs them (they skip, not fail, without one).

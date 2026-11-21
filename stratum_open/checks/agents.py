@@ -29,7 +29,7 @@ AGENT_FILES = (
 def check_instruction_files(files: list[FileDiff]) -> list[Finding]:
     findings = []
     for file in files:
-        changed = [path for path in (file.path, file.old_path) if path and _agent_file(path)]
+        changed = [path for path in (file.path, file.old_path) if path and instruction_file(path)]
         if not changed:
             continue
         findings.append(Finding(
@@ -56,7 +56,7 @@ def check_instruction_files(files: list[FileDiff]) -> list[Finding]:
 _AGENT_PATTERNS = tuple(pattern.lower() for pattern in AGENT_FILES)
 
 
-def _agent_file(path: str) -> bool:
+def instruction_file(path: str) -> bool:
     return matches_any(path.lower(), _AGENT_PATTERNS)
 
 

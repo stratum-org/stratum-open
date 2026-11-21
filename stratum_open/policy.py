@@ -50,6 +50,7 @@ class Review:
     verify: str = "none"  # none | strict | lenient: one more short call per model finding, dropping those the model rejects
     reasoning: str = "default"  # default | low | off: how much a thinking model (gpt-oss, Qwen3) thinks before answering
     logic_pass: bool = False  # one more call per chunk that looks only for logic errors, one decision at a time
+    agent_prs_logic_pass: bool = False  # logic_pass, only on a PR a coding agent likely wrote (agent_prs.py)
     rules: tuple[str, ...] = ()  # the project's own review rules, in plain words, added to the prompt
     ignore_paths: tuple[str, ...] = DEFAULT_IGNORED
     log_prompts: bool = False
@@ -111,6 +112,16 @@ class Labels:
     needs_work: str = "triage: needs work"
     low_effort: str = "triage: low effort"
     needs_human: str = "triage: needs a maintainer"
+    agent_written: str = "triage: agent-written"  # with agent_prs.label, beside the one above
+
+
+@dataclass(frozen=True)
+class AgentPRs:
+    """PRs a coding agent likely wrote (agent_prs.py). Any key on also has each
+    review read the PR's commits, one more API call, and say what it found."""
+    label: bool = False  # add labels.agent_written (with triage.enabled)
+    needs_maintainer: bool = False  # sort them as "needs a maintainer"
+    require_tests: bool = False  # sort one that changes code and no test as "needs work"
 
 
 @dataclass(frozen=True)
@@ -121,6 +132,7 @@ class Triage:
     require_linked_issue: bool = False
     close_without_issue: bool = False
     queue: bool = True  # the Action keeps an issue listing every open PR, sorted
+    agent_prs: AgentPRs = field(default_factory=AgentPRs)
 
 
 @dataclass(frozen=True)

@@ -490,3 +490,16 @@ def test_the_early_path_of_review_pull_holds_on_gitlab(gl, fake_model, make_mode
     assert publish.Early.decode(summary["body"], HEAD) is None and publish.State.decode(summary["body"]).head == HEAD
     assert [state for _, state in gl.status_history] == ["running", "failed"]
     assert [t["notes"][0]["position"]["new_line"] for t in gl.threads(7)] == [5]
+
+
+def test_a_coding_agents_mr_is_labelled_from_its_commits(gl, fake_model):
+    gl.add_mr(7, diff=DIFF, source_branch="cursor/keep-the-row")
+    gl.mr_commits[7] = [{"id": "c" * 40, "message": "Keep the row\n\nCo-authored-by: Carol <carol@example.com>",
+                         "author_name": "Cursor Agent", "author_email": "cursoragent@cursor.com"}]
+    gl.set_policy("triage:\n  enabled: true\n  agent_prs:\n    label: true\n")
+    assert ci.main(env_for(gl, fake_model)) == 0
+    assert "triage: agent-written" in gl.mrs[7]["labels"]
+    [summary] = [n for n in gl.notes[7] if publish.SUMMARY_MARKER in n["body"]]
+    assert ("**Likely written by a coding agent:** its commit is by or co-authored by Cursor; its branch `cursor/keep-the-row` "
+            "is named the way Cursor names its own.") in summary["body"]
+    assert len(gl.requests_to("GET", r"/merge_requests/7/commits$")) == 1

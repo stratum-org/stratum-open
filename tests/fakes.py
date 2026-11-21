@@ -53,6 +53,8 @@ class FakeGitHub:
         self.reactions_: dict[int, list[dict]] = {}
         self.history_review_comments: list[dict] = []  # inline comments on other PRs, for review.learn_from_history
         self.compare: dict[tuple[str, str], list[str] | None] = {}
+        self.commits: dict[int, list[dict]] = {}  # a PR's commits, as `pulls/{n}/commits` lists them
+        self.commits_asked: list[int] = []
         self.closed: list[int] = []
         self.issues: list[dict] = []
         self.reject_review = False
@@ -83,6 +85,10 @@ class FakeGitHub:
 
     def pull_diff(self, number):
         return self.diffs.get(number, self.diff)
+
+    def pull_commits(self, number):
+        self.commits_asked.append(number)
+        return list(self.commits.get(number, []))
 
     def file_text(self, path, ref, *, max_bytes=None):
         text = self.files.get((path, ref))

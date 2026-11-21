@@ -366,6 +366,7 @@ class Summary:
     hidden: str = ""  # a line on the findings left out for being like ones maintainers rejected (review.learn_from_history)
     pending: str = ""  # `review.early_checks`: the checks alone, posted before the model has run; this says where the model is
     label_held: str = ""  # why the triage label wasn't applied this time, though labels are on
+    agent: str = ""  # `triage.agent_prs`: the line on whether a coding agent wrote the PR (AgentResult.line)
 
 
 def render_summary(summary: Summary, state: State) -> str:
@@ -380,6 +381,8 @@ def render_summary(summary: Summary, state: State) -> str:
     if lines[-1] != "":
         lines.append("")
 
+    if summary.agent:
+        lines += [summary.agent, ""]
     if summary.triage is not None:
         label = label_for(summary.policy, summary.triage.key)
         state_word = (" (labels are off in this project's policy, so nothing was applied)" if not summary.policy.triage.enabled
@@ -597,6 +600,22 @@ def publish_check(gh: GitHub, head_sha: str, findings: list[Finding], summary_te
 def early_check_title(findings: list[Finding]) -> str:
     """The title of the check run `review.early_checks` leaves in progress."""
     return f"Checks: {_tally(findings) or 'nothing'}. Model: still running."
+
+
+AGENT_COLOR = "c5def5"
+AGENT_DESCRIPTION = "Stratum: probably written by a coding agent"
+
+
+def apply_agent_label(gh: GitHub, number: int, policy: Policy, likely: bool, known: bool, current: list[str]) -> None:
+    """`triage.agent_prs.label`: the label on a PR a coding agent likely
+    wrote, and off one that no longer looks it. `known` is False when the
+    PR's commits couldn't be read; a label already there then stays."""
+    name = policy.triage.labels.agent_written
+    if likely and name not in current:
+        gh.ensure_label(name, AGENT_COLOR, AGENT_DESCRIPTION)
+        gh.add_labels(number, [name])
+    elif not likely and known and name in current:
+        gh.remove_label(number, name)
 
 
 def apply_label(gh: GitHub, number: int, policy: Policy, key: str, current: list[str]) -> None:

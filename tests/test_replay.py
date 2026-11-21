@@ -20,6 +20,7 @@ from stratum_open.platform import CI
 from stratum_open.replay import (
     RESERVE, Column, ReadOnlySession, as_dict, closing_issues, disagreements, render, render_html, render_markdown, replay,
 )
+from stratum_open.triage import AGENT_HUMAN
 
 CLEAN = """diff --git a/src/dates.py b/src/dates.py
 --- a/src/dates.py
@@ -73,11 +74,11 @@ jobs:
 """
 CLOSED_AT = "2026-03-02T10:00:00Z"
 POLICY = (".stratum/policy.yml", "main")
-READS = {"repository", "file_text", "closed_pulls", "pull_diff", "ci_state_at"}
+READS = {"repository", "file_text", "closed_pulls", "pull_diff", "ci_state_at", "pull_commits"}
 
 
 class ClosedPRs(FakeGitHub):
-    """A repo of closed PRs. A replay may make the five reads above and no
+    """A repo of closed PRs. A replay may make the six reads above and no
     other call: anything else on the fake, a write above all, fails the test,
     and is kept in `refused` in case something caught the failure."""
 
@@ -260,6 +261,30 @@ def test_no_package_registry_is_asked(gh, monkeypatch):
     assert asked == []
 
 
+def test_each_pr_shows_whether_a_coding_agent_wrote_it_and_the_policy_decides_what_that_changes(gh):
+    add(gh, 14, user={"login": "Copilot"}, head={"sha": head_of(14), "ref": "copilot/strip"})
+    add(gh, 15, head={"sha": head_of(15), "ref": "codex/strip"})
+    gh.commits[13] = [{"sha": "c" * 40, "commit": {"message": "Strip\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+                                                   "author": {"name": "Carol", "email": "carol@example.com"}}}]
+    report = replay(gh)
+    assert [(row.number, row.agent) for row in report.rows] == [
+        (15, {"verdict": "possible", "signals": ["branch"]}), (14, {"verdict": "likely", "signals": ["author", "branch"]}),
+        (13, {"verdict": "likely", "signals": ["commits"]}), (12, {"verdict": "no", "signals": []}), (11, {"verdict": "no", "signals": []}),
+    ]
+    assert gh.commits_asked == [15, 14, 13, 12, 11]  # one request per PR
+    assert [row.key for row in report.rows] == ["ready", "ready", "low_effort", "needs_work", "ready"]  # the keys are off
+    text = render(report)
+    assert "| PR | Outcome | Label | Why | Checks' findings | Coding agent |" in text
+    assert "| #14 Change 14 | merged | triage: ready | CI passes. Linked to #3. Changes tests. |  | likely: author, branch |" in text
+    assert text.count("| no |") == 2 and "| possible: branch |" in text
+    assert json.loads(json.dumps(as_dict(report)))["pulls"][1]["agent"] == {"verdict": "likely", "signals": ["author", "branch"]}
+
+    gh.files[POLICY] = "triage:\n  agent_prs:\n    needs_maintainer: true\n"
+    rows = replay(gh).rows
+    assert [row.key for row in rows] == ["ready", "needs_human", "needs_human", "needs_work", "ready"]
+    assert rows[1].reasons == [AGENT_HUMAN]
+
+
 def test_state_and_last_choose_the_prs(gh):
     assert [row.number for row in replay(gh, state="merged").rows] == [12, 11]
     assert [row.number for row in replay(gh, state="closed").rows] == [13]
@@ -429,9 +454,9 @@ def test_the_markdown_report_to_share_puts_every_pr_and_issue_number_in_code(gh,
     gh.pulls[11]["title"] = title
     report = replay(gh)
     line = [line for line in render_markdown(report).splitlines() if line.startswith("| `#11` ")][-1]
-    assert line == f"| `#11` {cell} | merged | triage: ready | CI passes. Linked to `#3`. Changes tests. |  |"
+    assert line == f"| `#11` {cell} | merged | triage: ready | CI passes. Linked to `#3`. Changes tests. |  | no |"
     line = [line for line in render(report).splitlines() if line.startswith("| #11 ")][-1]  # the terminal's table is as it was
-    assert line.startswith("| #11 ") and line.endswith("| CI passes. Linked to #3. Changes tests. |  |")
+    assert line.startswith("| #11 ") and line.endswith("| CI passes. Linked to #3. Changes tests. |  | no |")
 
 
 def test_the_html_report_is_one_page_that_loads_nothing_and_escapes_every_title(disagreeing):
@@ -454,9 +479,9 @@ def test_a_column_added_to_columns_shows_in_every_format(gh, monkeypatch):
     """A new fact about each PR takes one entry in COLUMNS, not a change to each format."""
     monkeypatch.setattr(replay_module, "COLUMNS", [*replay_module.COLUMNS, Column("Agent", lambda policy, row: f"agent of #{row.number}")])
     report = replay(gh)
-    assert "| PR | Outcome | Label | Why | Checks' findings | Agent |" in render(report)
-    assert "| CI passes. Linked to #3. Changes tests. |  | agent of #11 |" in render(report)
-    assert "| --- | --- | --- | --- | --- | --- |" in render_markdown(report) and "| agent of `#12` |" in render_markdown(report)
+    assert "| PR | Outcome | Label | Why | Checks' findings | Coding agent | Agent |" in render(report)
+    assert "| CI passes. Linked to #3. Changes tests. |  | no | agent of #11 |" in render(report)
+    assert "| --- | --- | --- | --- | --- | --- | --- |" in render_markdown(report) and "| agent of `#12` |" in render_markdown(report)
     assert "<th>Agent</th>" in render_html(report) and "<td>agent of #13</td>" in render_html(report)
 
 

@@ -442,3 +442,43 @@ def test_a_default_branch_with_no_commit_in_the_window_is_still_checked_out(tmp_
     assert server.checkout("acme/widget", "token", "main", 30) == path, logs
     assert git("-C", path, "log", "-1", "--format=%s") == "Add new.py"
     assert not logs
+
+
+def test_the_app_keeps_the_triage_queue_issue(fake_github, tmp_path, monkeypatch):
+    """A PR closing rebuilds the queue as the App's bot, once the wait is over: the issue is opened, then edited in place."""
+    from stratum_open.triage_queue import TITLE
+
+    fake_github.add_pull(7, diff=DIFF, title="Add a thing")
+    fake_github.add_pull(8, diff=DIFF, title="Second")
+    logs: list[str] = []
+    with monkeypatch.context() as patch:  # no workers or loops: the test runs each rebuild that's due
+        patch.setattr("threading.Thread.start", lambda self: None)
+        server = Server(AppAuth("1", _private_key(), api=fake_github.url), SECRET.decode(), SQLiteStorage(str(tmp_path / "s.db")),
+                        str(tmp_path / "repos"), env={}, workers=0, log=logs.append)
+    now = [0.0]
+    server.clock = lambda: now[0]
+
+    fake_github.pulls[8]["state"] = "closed"
+    assert call(server, pr_event(number=8, action="closed"))[1] == {"queued": True}
+    assert server.rebuild_due() == [] and fake_github.issues == []  # it waits a minute first
+    now[0] = 60
+    assert server.rebuild_due() == ["acme/widget"]
+    [queue] = fake_github.issues
+    assert queue["title"] == TITLE and queue["user"]["login"] == "stratum[bot]"
+    assert "#7 Add a thing" in queue["body"] and "#8" not in queue["body"]
+
+    fake_github.pulls[7]["state"] = "closed"
+    call(server, pr_event(number=7, action="closed"), delivery="d-2")
+    now[0] = 120
+    assert server.rebuild_due() == ["acme/widget"]
+    assert [i["number"] for i in fake_github.issues] == [queue["number"]] and "#7" not in fake_github.issues[0]["body"]
+    assert fake_github.requests_to("PATCH", rf"/issues/{queue['number']}$")
+
+    fake_github.set_policy("triage:\n  queue: false\n")  # turned off since: nothing is posted
+    fake_github.add_pull(9, diff=DIFF, title="Third")
+    call(server, pr_event(number=9, action="converted_to_draft"), delivery="d-3")
+    now[0] = 180
+    edits = len(fake_github.requests_to("PATCH", r"/issues/\d+$"))
+    assert server.rebuild_due() == ["acme/widget"]
+    assert len(fake_github.requests_to("PATCH", r"/issues/\d+$")) == edits and "#9" not in fake_github.issues[0]["body"]
+    assert logs == []

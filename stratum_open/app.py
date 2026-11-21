@@ -36,13 +36,14 @@ import requests
 
 from stratum_open.checks.dependencies import PackageLookup
 from stratum_open.github.api import API, GitHub, GitHubError
-from stratum_open.github.commands import handle, parse
+from stratum_open.github.commands import LABEL_COMMANDS, handle, parse
 from stratum_open.github.feedback import collect_votes
 from stratum_open.model import model_from_policy
 from stratum_open.policy import REVIEW_EVENTS, Policy
 from stratum_open.runner import Context, checkout_ref, load_context_policy, review_pull, skip_reason
 from stratum_open.storage import SQLiteStorage, Storage
 from stratum_open.track_record import describe_subprocess_error
+from stratum_open.triage_queue import update_queue
 from stratum_open.util import redact
 
 MAX_BODY = 25 * 1024 * 1024  # GitHub's own webhook payload limit
@@ -50,6 +51,13 @@ DELIVERY_TTL = 3600.0  # seconds a delivery ID is remembered
 MAX_DELIVERIES = 5000
 JOBS_DAYS = 14
 PURGE_EVERY = 24 * 3600
+# A repo's triage queue is rebuilt once no job has come for it for QUEUE_WAIT seconds and none is
+# waiting or running, so a burst of reviews costs one rebuild; on a repo that's never that quiet,
+# QUEUE_MAX_WAIT after the first job it waits for. The rebuild loop looks every QUEUE_TICK seconds.
+QUEUE_WAIT = 60.0
+QUEUE_MAX_WAIT = 600.0
+QUEUE_TICK = 5.0
+QUEUE_ONLY = ("closed", "converted_to_draft")  # PR events that only change the queue: the PR leaves it (the Action's QUEUE_ONLY)
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9_.-]")
 
 
@@ -111,11 +119,14 @@ class Server:
         self._forgotten: set[str] = set()  # uninstalled repos, until a webhook comes for one again
         self._repo_locks: dict[str, threading.Lock] = {}
         self._deliveries: OrderedDict[str, float] = OrderedDict()
+        self._rebuilds: dict[str, dict[str, Any]] = {}  # repo -> the triage queue rebuild it waits for
+        self.clock: Callable[[], float] = time.monotonic
         self._lock = threading.Lock()
         os.makedirs(workdir, exist_ok=True)
         for _ in range(workers):
             threading.Thread(target=self._work, daemon=True).start()
         threading.Thread(target=self._purge_loop, daemon=True).start()
+        threading.Thread(target=self._rebuild_loop, daemon=True).start()
 
     # ── WSGI ─────────────────────────────────────────────────────────────
 
@@ -204,6 +215,12 @@ class Server:
         if event == "pull_request" and payload.get("action") in REVIEW_EVENTS and pull.get("number"):
             self.enqueue((repo, pull["number"], "review"), event, payload)
             return True
+        if event == "pull_request" and payload.get("action") in QUEUE_ONLY and pull.get("number"):
+            # No review, only the triage queue, which the repo's policy is read for when it's rebuilt.
+            with self._lock:
+                self._forgotten.discard(repo.lower())  # a webhook for it: installed again
+            self.rebuild_soon(installation, repo, _dict(payload.get("repository")).get("default_branch") or "main")
+            return True
         if event in ("issue_comment", "pull_request_review_comment") and payload.get("action") == "created":
             comment = _dict(payload.get("comment"))
             issue = _dict(payload.get("issue"))
@@ -227,6 +244,8 @@ class Server:
             self._forgotten.add(repo.lower())
             for key in [k for k in self._pending if k[0].lower() == repo.lower()]:
                 del self._pending[key]
+            for name in [n for n in self._rebuilds if n.lower() == repo.lower()]:
+                del self._rebuilds[name]
         deleted = self._delete(repo)
         self.log(f"{repo}: uninstalled; deleted {deleted} stored row(s) and its clone")
 
@@ -287,6 +306,7 @@ class Server:
             reason = skip_reason(payload["pull_request"], payload.get("action", ""), ctx.policy)
             if reason:
                 self.storage.record_job(repo, number, "review", "skipped", reason)
+                self._queue_after(ctx, payload)  # the queue lists PRs that aren't reviewed too
                 return
             try:
                 collect_votes(ctx.gh, number, ctx.bot, self.storage)
@@ -294,10 +314,13 @@ class Server:
                 self.log(f"{repo}#{number}: couldn't read reactions: {exc}")
             outcome = review_pull(ctx, number)
             self.storage.record_job(repo, number, "review", outcome.status, outcome.note)
+            self._queue_after(ctx, payload)
         else:
             number = (payload.get("issue") or payload.get("pull_request") or {}).get("number")
             done = handle(ctx, event, payload)
             self.storage.record_job(repo, number, "command", done or "none")
+            if done in LABEL_COMMANDS.values():  # `/stratum review` or `ignore` ran, and may have changed the PR's label
+                self._queue_after(ctx, payload)
         self.storage.purge(findings_days=ctx.policy.data.findings_retention_days, jobs_days=JOBS_DAYS, repo=repo)
 
     def context(self, installation_id: int, repo: str, default_branch: str) -> Context:
@@ -310,6 +333,58 @@ class Server:
             storage=self.storage, checkout=checkout, history_ref=checkout_ref(checkout, default_branch) if checkout else "HEAD",
             lookup=PackageLookup(), feedback=True, log=self.log,
         )
+
+    # ── the triage queue ─────────────────────────────────────────────────
+
+    def _queue_after(self, ctx: Context, payload: dict) -> None:
+        """A job that can have changed the repo's triage queue: rebuild it soon, if the repo keeps one."""
+        if ctx.policy.triage.queue:
+            repository = payload["repository"]
+            self.rebuild_soon(payload["installation"]["id"], repository["full_name"], repository.get("default_branch") or "main")
+
+    def rebuild_soon(self, installation: int, repo: str, default_branch: str) -> None:
+        """Rebuild the repo's triage queue when its wait is over (QUEUE_WAIT).
+        A job that ends meanwhile makes it wait longer, so one rebuild reads
+        every job's result."""
+        now = self.clock()
+        with self._lock:
+            if repo.lower() in self._forgotten:  # uninstalled while the job ran
+                return
+            first = self._rebuilds.get(repo, {}).get("first", now)
+            self._rebuilds[repo] = {"installation": installation, "branch": default_branch, "first": first, "last": now}
+
+    def rebuild_due(self) -> list[str]:
+        """Rebuild each triage queue whose wait is over, one at a time; the repos it was due for."""
+        now = self.clock()
+        with self._lock:
+            busy = {key[0].lower() for key in [*self._pending, *self._busy]}
+            due = {repo: wait for repo, wait in self._rebuilds.items() if now >= wait["first"] + QUEUE_MAX_WAIT
+                   or (now >= wait["last"] + QUEUE_WAIT and repo.lower() not in busy)}
+            for repo in due:
+                del self._rebuilds[repo]
+        for repo, wait in due.items():
+            self.rebuild_queue(wait["installation"], repo, wait["branch"])
+        return list(due)
+
+    def rebuild_queue(self, installation: int, repo: str, default_branch: str) -> None:
+        """No model and no clone: the policy, then `update_queue`. The App's
+        bot posts the issue, so it finds and edits its own. A failure is a
+        line in the log, and the next job's rebuild tries again."""
+        try:
+            gh = GitHub(self.auth.token(installation), repo, api=self.auth.api)
+            policy = load_context_policy(gh, default_branch)
+            if policy.triage.queue:  # turned off since, or a closed PR's repo that keeps none
+                update_queue(Context(gh=gh, policy=policy, model=None, bot=self.auth.bot_login(), log=self.log))
+        except Exception as exc:
+            self.log(redact(f"{repo}: couldn't rebuild the triage queue: {type(exc).__name__}: {exc}"))
+
+    def _rebuild_loop(self) -> None:
+        while True:
+            time.sleep(QUEUE_TICK)
+            try:
+                self.rebuild_due()
+            except Exception as exc:  # rebuild_queue logs its own; this keeps the loop alive whatever happens
+                self.log(redact(f"triage queue: {type(exc).__name__}: {exc}"))
 
     # ── the clone of each default branch ─────────────────────────────────
 

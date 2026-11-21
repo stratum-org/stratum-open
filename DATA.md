@@ -124,7 +124,7 @@ time.
 ## What leaves the maintainers' infrastructure
 
 - **GitHub API calls:** reading the PR, its diff and the repo history; posting
-  comments, labels and the check run.
+  comments, labels, the check run and the triage queue issue.
 - **The model endpoint in the policy file.** With `model: local`, the default,
   that's a server the maintainers run, so code stays with them.
 - **Package registries** (PyPI, npm, crates.io): only the names of

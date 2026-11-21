@@ -477,3 +477,89 @@ def test_triage_post_respects_triage_queue_off(monkeypatch, capsys):
     assert gh.issues == [] and "triage.queue is off" in capsys.readouterr().err
     assert cli.main(["triage", "acme/widget"]) == 0  # printing the queue still works
     assert "Open PRs sorted by Stratum" in capsys.readouterr().out and gh.issues == []
+
+
+# ── the triage queue ─────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def jobs(server, monkeypatch):
+    """Jobs that need no GitHub: a review or a command only records itself, and so does a queue rebuild.
+    `now` is the server's clock, and `rebuilt` lists (when, repo) for each rebuild."""
+    from stratum_open.policy import parse_policy
+    from stratum_open.runner import Context, Outcome
+
+    state = {"policy": parse_policy(""), "now": 0.0, "rebuilt": [], "done": "review"}
+    server.clock = lambda: state["now"]
+    monkeypatch.setattr(server, "context", lambda installation, repo, branch: Context(gh=None, policy=state["policy"], model=None, bot="b[bot]"))
+    monkeypatch.setattr("stratum_open.app.collect_votes", lambda gh, number, bot, storage: 0)
+    monkeypatch.setattr("stratum_open.app.review_pull", lambda ctx, number: Outcome(number, "published"))
+    monkeypatch.setattr("stratum_open.app.handle", lambda ctx, event, payload: state["done"])
+    monkeypatch.setattr(server, "rebuild_queue", lambda installation, repo, branch: state["rebuilt"].append((state["now"], repo)))
+    return state
+
+
+def test_several_jobs_for_one_repo_within_a_minute_lead_to_one_queue_rebuild(server, jobs):
+    for number, at in zip(range(7, 12), (0, 10, 25, 40, 55)):
+        jobs["now"] = at
+        server.run("pull_request", json.loads(pr_event(number=number)))
+    jobs["now"] = 114
+    assert server.rebuild_due() == []  # a minute after the last job, not the first
+    jobs["now"] = 115
+    assert server.rebuild_due() == ["acme/widget"]
+    jobs["now"] = 1000
+    assert server.rebuild_due() == []
+    assert jobs["rebuilt"] == [(115, "acme/widget")]
+
+
+def test_the_queue_waits_for_the_repos_queued_jobs_but_not_past_ten_minutes(server, jobs):
+    server.run("pull_request", json.loads(pr_event(number=7)))
+    call(server, pr_event(number=8))  # its review is queued, so the rebuild after #7 waits for it
+    call(server, pr_event(number=9).replace(b"acme/widget", b"acme/other"))  # another repo's job doesn't hold it
+    jobs["now"] = 599
+    assert server.rebuild_due() == []
+    jobs["now"] = 600
+    assert server.rebuild_due() == ["acme/widget"]
+
+
+def test_a_repo_thats_never_quiet_gets_a_handful_of_rebuilds(server, jobs):
+    for now in range(0, 1200, 5):  # the rebuild loop looks every 5 seconds; a review ends every 30 for 15 minutes
+        jobs["now"] = now
+        if now % 30 == 0 and now <= 900:
+            server.run("pull_request", json.loads(pr_event(number=now + 1)))
+        server.rebuild_due()
+    assert jobs["rebuilt"] == [(600, "acme/widget"), (960, "acme/widget")]  # 31 reviews
+
+
+def test_a_repo_with_the_queue_off_waits_for_no_rebuild(server, jobs):
+    from stratum_open.policy import parse_policy
+
+    jobs["policy"] = parse_policy("triage:\n  queue: false\n")
+    server.run("pull_request", json.loads(pr_event()))
+    assert server._rebuilds == {}
+
+
+@pytest.mark.parametrize("action", ["closed", "converted_to_draft"])
+def test_a_pr_leaving_the_queue_rebuilds_it_without_a_job(server, jobs, action):
+    assert call(server, pr_event(action=action))[1] == {"queued": True}
+    assert server._queue.qsize() == 0 and server._pending == {}  # no review, no clone, no model
+    jobs["now"] = 60
+    assert server.rebuild_due() == ["acme/widget"]
+
+
+@pytest.mark.parametrize("done, rebuilt", [("review", True), ("ignore", True), ("explain", False), ("refused", False), (None, False)])
+def test_a_command_rebuilds_the_queue_only_when_it_can_have_changed_a_label(server, jobs, done, rebuilt):
+    jobs["done"] = done
+    payload = {"action": "created", "installation": {"id": 1}, "repository": {"full_name": "acme/widget", "default_branch": "main"},
+               "issue": {"number": 7, "pull_request": {}}, "comment": {"id": 9, "body": "/stratum review"}}
+    server.run("issue_comment", payload)
+    assert ("acme/widget" in server._rebuilds) is rebuilt
+
+
+def test_uninstalling_drops_the_repos_queue_rebuild(server, jobs):
+    server.run("pull_request", json.loads(pr_event()))
+    call(server, json.dumps({"action": "deleted", "installation": {"id": 1}, "repositories": [{"full_name": "acme/widget"}]}).encode(),
+         event="installation")
+    server.run("pull_request", json.loads(pr_event()))  # a job that was running when the App was uninstalled
+    jobs["now"] = 1000
+    assert server.rebuild_due() == [] and jobs["rebuilt"] == []

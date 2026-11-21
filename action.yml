@@ -36,6 +36,12 @@ inputs:
       Whether this job rebuilds the triage queue issue on scheduled and manual runs. The example workflow sets it
       to false, since its queue job rebuilds the queue then, one rebuild at a time.
     default: "true"
+  sarif:
+    description: >-
+      A path to write each posted PR review's findings to, as SARIF 2.1.0, for github/codeql-action/upload-sarif
+      and other tools that read SARIF. Leave empty (the default) to write none. See "Findings in code scanning" in
+      the README, which shows the upload step and why it skips PRs from forks.
+    default: ""
 
 runs:
   using: composite
@@ -102,6 +108,7 @@ runs:
         STRATUM_EARLY_CONCLUSION: ${{ steps.early.outputs.conclusion }}
         STRATUM_HEAD_CHECKOUT: ${{ inputs.head-checkout }}
         STRATUM_TRIAGE_QUEUE: ${{ inputs.triage-queue }}
+        STRATUM_SARIF: ${{ inputs.sarif }}
       run: stratum-open action
 
     - name: Say the model's review didn't finish

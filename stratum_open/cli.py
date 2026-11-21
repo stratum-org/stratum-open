@@ -44,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     review.add_argument("--checkout", help="a checkout of the PR's default branch, for history-based notes")
     review.add_argument("--no-model", action="store_true", help="run the checks only")
     review.add_argument("--json", metavar="FILE", help="also write the findings to FILE as JSON")
+    review.add_argument("--sarif", metavar="FILE", help="also write the findings to FILE as SARIF 2.1.0, for code scanning and other tools")
 
     record = sub.add_parser("record", help="a contributor's track record, from git history")
     record.add_argument("login", help="a GitHub login or a commit email")
@@ -172,6 +173,7 @@ def _review(args) -> int:
         _print_findings(outcome.findings)
     else:
         print(f"PR #{outcome.number}: {outcome.status}" + (f" ({outcome.note})" if outcome.note else ""))
+    _write_sarif(args.sarif, outcome.findings)
     _write_json(args.json, outcome.findings)
     return 0
 
@@ -195,6 +197,7 @@ def _review_local(args, base: str) -> int:
     _print_findings(result.findings)
     for note in result.check_notes:
         print(note, file=sys.stderr)
+    _write_sarif(args.sarif, result.findings)
     _write_json(args.json, result.findings)
     return 1 if any(f.severity == "critical" for f in result.findings) else 0
 
@@ -310,6 +313,13 @@ def _print_findings(findings: list[Finding]) -> None:
 def _write_json(path: str | None, findings: list[Finding]) -> None:
     if path:
         Path(path).write_text(json.dumps([f.to_dict() for f in findings], indent=2), encoding="utf-8")
+
+
+def _write_sarif(path: str | None, findings: list[Finding]) -> None:
+    if path:
+        from stratum_open.sarif import write
+
+        print(write(path, findings), file=sys.stderr)  # stdout is the review
 
 
 # ── the rest ─────────────────────────────────────────────────────────────

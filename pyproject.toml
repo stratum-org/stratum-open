@@ -24,7 +24,7 @@ Source = "https://github.com/stratum-org/stratum-open"
 stratum-open = "stratum_open.cli:main"
 
 [project.optional-dependencies]
-test = ["pytest>=8"]
+test = ["pytest>=8", "jsonschema>=4"]  # jsonschema: the SARIF output is checked against the official schema
 app = ["PyJWT[crypto]>=2.8"]
 bandit = ["bandit>=1.7"]
 ruff = ["ruff>=0.16"]

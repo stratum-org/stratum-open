@@ -126,6 +126,7 @@ def _run(env: Mapping[str, str], event_name: str, payload: dict, gh: GitHub, loa
         else:
             outcome = review_pull(ctx, pull["number"])
             print(f"PR #{outcome.number}: {outcome.status}, {len(outcome.findings)} finding(s)" + (f", {outcome.triage.key}" if outcome.triage else ""))
+            _write_sarif(env, outcome.status, outcome.findings)
             if outcome.status != "published" and _early_run(env):  # the early post waits for a review that won't come
                 stop_early(gh, pull["number"], (pull.get("head") or {}).get("sha", ""), bot=ctx.bot, name=policy.review.check_name,
                            run_id=_early_run(env), conclusion=env.get("STRATUM_EARLY_CONCLUSION", ""))
@@ -230,6 +231,22 @@ def _early_run(env: Mapping[str, str]) -> int:
     """The check run `stratum-open action --early` left in progress in this job, or 0."""
     raw = (env.get("STRATUM_EARLY_CHECK_RUN") or "").strip()
     return int(raw) if raw.isdigit() else 0
+
+
+def _write_sarif(env: Mapping[str, str], status: str, findings: list) -> None:
+    """The `sarif` input (STRATUM_SARIF): a posted review's findings as SARIF, for the workflow's
+    upload step. A review that wasn't posted (a newer commit arrived, or the PR closed) writes
+    none. The review is on the PR by now, so a file that can't be written is a warning, and
+    the job's failure path can't replace the review's check run with a "couldn't finish" one."""
+    path = (env.get("STRATUM_SARIF") or "").strip()
+    if not path or status != "published":
+        return
+    try:
+        from stratum_open.sarif import write
+
+        print(write(path, findings))
+    except Exception as exc:
+        print(f"::warning::Stratum couldn't write the SARIF file {path} ({type(exc).__name__}: {redact(str(exc))[:300]}).")
 
 
 def early(env: Mapping[str, str] = os.environ) -> int:

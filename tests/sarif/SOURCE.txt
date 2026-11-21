@@ -1,0 +1,13 @@
+sarif-schema-2.1.0.json is the official SARIF 2.1.0 JSON schema (errata 01, OASIS Standard), unchanged,
+from the OASIS SARIF TC's repository:
+
+  https://github.com/oasis-tcs/sarif-spec/blob/1742a253eb654bf8a4ed7c60eaef7412b2c23553/sarif-2.1/schema/sarif-schema-2.1.0.json
+  raw: https://raw.githubusercontent.com/oasis-tcs/sarif-spec/1742a253eb654bf8a4ed7c60eaef7412b2c23553/sarif-2.1/schema/sarif-schema-2.1.0.json
+
+Downloaded at commit 1742a253eb654bf8a4ed7c60eaef7412b2c23553 (main on 2026-11-21). The file was last
+changed in a560296ca8c921f3bdb8d4a8db57ab83dae968a7 (2024-05-02).
+SHA-256: c3b4bb2d6093897483348925aaa73af03b3e3f4bd4ca38cef26dcb4212a2682e
+
+It is the schema that https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json
+names in its "id". The repository's content is under the OASIS IPR Policy (its LICENSE.md). It is test data:
+tests/test_sarif.py validates Stratum's SARIF output against it, and it isn't part of the package.

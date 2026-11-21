@@ -39,10 +39,11 @@ jobs:
           python-version: "3.12"
 
       # `replay --format` isn't in 0.3.0, the latest release, so until the next
-      # one this installs stratum-open from its main branch. Once that release
-      # is out, install it instead: "stratum-open==<version>".
+      # one this installs the commit that added it. A commit, not a branch, so
+      # what runs with your token can't change under you. At the next release
+      # this moves to "stratum-open==<version>".
       - name: Install Stratum Open
-        run: python -m pip install --quiet --disable-pip-version-check "stratum-open @ git+https://github.com/stratum-org/stratum-open@main"
+        run: python -m pip install --quiet --disable-pip-version-check "stratum-open @ git+https://github.com/stratum-org/stratum-open@9b6c21132b09bdae372a5993c71804c5d59e91ee"
 
       - name: Replay the last closed PRs
         env:

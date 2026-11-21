@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import time
 from pathlib import Path
 
@@ -548,14 +549,47 @@ def test_the_try_workflow_runs_by_hand_reads_only_and_pins_its_actions():
     assert len(runs) == 2 and not any(re.search(r"\bgh\b|\bcurl\b|--post", run) for run in runs)  # it posts nothing
 
 
-def test_the_try_workflow_installs_a_stratum_open_that_has_replay_format():
-    """`replay --format` isn't in 0.3.0, the latest release, so the example
-    installs the main branch. The release after it bumps the version, which
-    fails this test: that release's commit pins the example to it
-    ("stratum-open==<version>"), and changes this test to match."""
+def pinned_install() -> tuple[str | None, str | None]:
+    """What the example installs: (a commit, a released version), one of them None."""
     [install] = [step["run"] for step in try_steps() if "pip install" in step.get("run", "")]
-    assert __version__ == "0.3.0"
-    assert install.endswith('"stratum-open @ git+https://github.com/stratum-org/stratum-open@main"')
+    spec = shlex.split(install)[-1]
+    commit = re.fullmatch(r"stratum-open @ git\+https://github\.com/stratum-org/stratum-open@([0-9a-f]{40})", spec)
+    release = re.fullmatch(r"stratum-open==(\d+(?:\.\d+)+)", spec)
+    assert commit or release, f"{spec} is neither a commit nor a released version"
+    return (commit.group(1) if commit else None), (release.group(1) if release else None)
+
+
+def test_the_try_workflow_installs_a_commit_or_a_release_never_a_branch():
+    """Whoever copies the example runs what it installs, with a token that
+    can read their repo, so what it installs must not change under them.
+    0.3.0, the latest release, has no `replay --format`, so until the next
+    release it's a commit. The release that bumps the version fails this
+    test until the example installs that release."""
+    commit, release = pinned_install()
+    if __version__ == "0.3.0":
+        assert commit is not None
+    else:
+        assert release == __version__
+
+
+def test_the_commit_the_try_workflow_installs_is_on_main_and_has_replay_format():
+    commit, _ = pinned_install()
+    if commit is None:
+        pytest.skip("the example installs a release")
+    root = Path(__file__).parent.parent
+
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, encoding="utf-8")
+
+    try:
+        known = git("cat-file", "-e", f"{commit}^{{commit}}").returncode == 0
+    except OSError:
+        pytest.skip("no git here")
+    if not known and git("rev-parse", "--is-shallow-repository").stdout.strip() == "true":
+        pytest.skip(f"this shallow clone may not have {commit[:7]}")
+    assert known, f"{commit} isn't a commit of this repo"
+    assert git("merge-base", "--is-ancestor", commit, "HEAD").returncode == 0, f"{commit} isn't on main"
+    assert 'add_argument("--format", choices=["markdown", "html"]' in git("show", f"{commit}:stratum_open/cli.py").stdout
 
 
 def test_the_try_workflow_writes_the_markdown_report_to_the_job_summary(command, tmp_path, monkeypatch):

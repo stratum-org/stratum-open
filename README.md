@@ -44,7 +44,7 @@ From the release after 0.3.0, `--format markdown` gives a report to paste into a
 
 <sub>The HTML report for this repo's last 40 closed PRs.</sub>
 
-Or, with nothing to run on your machine: copy [examples/try-stratum.yml](examples/try-stratum.yml) to `.github/workflows/` in your repo and run it from the Actions tab. It replays your repo with the workflow's own read-only token and writes the Markdown report to the run's summary page, which anyone who can see the repo can open; on a private repo, it holds your PR titles. Nothing is posted to issues or PRs. Until the release after 0.3.0, the workflow installs Stratum Open from its main branch, since 0.3.0 has no `--format`.
+Or, with nothing to run on your machine: copy [examples/try-stratum.yml](examples/try-stratum.yml) to `.github/workflows/` in your repo and run it from the Actions tab. It replays your repo with the workflow's own read-only token and writes the Markdown report to the run's summary page, which anyone who can see the repo can open; on a private repo, it holds your PR titles. Nothing is posted to issues or PRs. Until the release after 0.3.0, the workflow installs Stratum Open from a pinned commit, since 0.3.0 has no `--format`.
 
 ## Quick start: the GitHub Action
 

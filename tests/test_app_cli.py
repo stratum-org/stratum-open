@@ -443,7 +443,7 @@ def test_review_staged_skips_the_name_checks_when_the_working_tree_isnt_whats_st
     git("checkout", "--", "pkg/db.py")  # as pre-commit stashes it
     assert cli.main(["review", "--staged", "--no-model"]) == 0
     out, err = capsys.readouterr()
-    assert "pkg/users.py:1" in out and "`pkg/db.py` has no `close`" in out and "didn't run" not in err
+    assert "pkg/users.py:1" in out and "`pkg/db.py` has no `close`" in out and "checks.unknown_names didn't run" not in err
 
 
 def test_data_commands(tmp_path, capsys):

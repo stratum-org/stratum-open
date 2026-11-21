@@ -58,6 +58,9 @@ class FakeGitHubServer:
         self.labels: dict[str, dict[str, Any]] = {}
         self.issue_labels: dict[int, list[str]] = {}
         self.issues: list[dict[str, Any]] = []
+        self.opened: list[tuple[str, int]] = []  # ("pull" | "issue", number) in the order they were opened, for /issues' order
+        self.pulls_page_limit: int | None = None  # a GraphQL page of more open PRs than this gets a timeout ...
+        self.pulls_page_timeout = 200  # ... as GitHub's GraphQL error (200), or as the gateway's 502 or 504
         self.reactions: dict[int, list[dict[str, Any]]] = {}
         self.permissions: dict[str, str] = {}
         self.compare: dict[tuple[str, str], list[dict[str, Any]] | None] = {}
@@ -131,6 +134,8 @@ class FakeGitHubServer:
             "closed_at": "2026-01-02T00:00:00Z" if state == "closed" else None, "merged_at": "2026-01-02T00:00:00Z" if merged else None,
         }
         with self._lock:
+            if number not in self.pulls:
+                self.opened.append(("pull", number))
             self.pulls[number] = pull
             self.diffs[number] = diff
             self.pr_files[number] = files if files is not None else _files_from_diff(parsed)
@@ -428,6 +433,10 @@ def _handler(fake: FakeGitHubServer) -> type[BaseHTTPRequestHandler]:
                 issues = [i for i in fake.issues if state == "all" or i.get("state", "open") == state]
                 issues += [{"number": p["number"], "title": p["title"], "state": p["state"], "user": p.get("user"), "pull_request": {"url": "x"}}
                            for p in fake.pulls.values() if state == "all" or p["state"] == state]
+                # Newest first, as GitHub lists them by default; an issue a test appended itself counts as the oldest.
+                rank = {key: n for n, key in enumerate(fake.opened)}
+                issues.sort(key=lambda i: rank.get(("pull" if "pull_request" in i else "issue", i["number"]), -1),
+                            reverse=query.get("direction", "desc") == "desc")
                 return self._page(issues, query, path)
             if m := re.fullmatch(f"{r}/issues/(\\d+)/comments", path):
                 number = int(m.group(1))
@@ -540,6 +549,7 @@ def _handler(fake: FakeGitHubServer) -> type[BaseHTTPRequestHandler]:
                          "state": "open", "user": {"login": fake.bot, "type": "Bot"}}
                 with fake._lock:
                     fake.issues.append(issue)
+                    fake.opened.append(("issue", issue["number"]))
                 return 201, issue, {}
             return None
 
@@ -677,6 +687,11 @@ def _handler(fake: FakeGitHubServer) -> type[BaseHTTPRequestHandler]:
                 first = int(variables.get("first") or 0)
                 if not 1 <= first <= 100:
                     return {"data": None, "errors": [{"message": "Values of `first` and `last` must be within 1-100."}]}
+                if fake.pulls_page_limit is not None and first > fake.pulls_page_limit:  # GitHub gave up after 10 seconds
+                    if fake.pulls_page_timeout != 200:
+                        raise _Reply(fake.pulls_page_timeout, {"message": "We couldn't respond to your request in time. Sorry about that."})
+                    return {"data": None, "errors": [{"message": "Something went wrong while executing your query. "
+                                                                 "This may be the result of a timeout, or it could be a GitHub bug."}]}
                 pulls = [p for p in fake.pulls.values() if p["state"] == "open"]
                 if "direction:DESC" in query:  # newest first; here a higher number is a newer PR
                     pulls.sort(key=lambda p: -p["number"])

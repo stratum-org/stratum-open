@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from stratum_open.github import publish
+from stratum_open.github.api import GitHubError
 from stratum_open.runner import review_pull
 from stratum_open.triage_queue import TITLE, update_queue
 
@@ -44,21 +45,46 @@ def comment(fake_github, number: int, body: str, login: str) -> None:
         {"id": fake_github.next_id(), "body": body, "user": {"login": login, "type": "Bot" if login.endswith("[bot]") else "User"}})
 
 
-def test_a_rebuild_with_a_hundred_open_prs_makes_two_rest_calls(fake_github, make_context):
-    for n in range(1, 102):
+def add_reviewed_pulls(fake_github, count: int) -> None:
+    for n in range(1, count + 1):
         fake_github.add_pull(n, diff=DIFF, title=f"PR {n}")
         comment(fake_github, n, "Thanks, looking.", "erin")
         comment(fake_github, n, summary("ready"), fake_github.bot)
+
+
+def test_a_rebuild_with_a_hundred_open_prs_makes_three_rest_calls(fake_github, make_context):
     ctx = make_context(model=None)
-    update_queue(ctx, post=True)  # creates the issue
+    update_queue(ctx, post=True)  # the queue issue, opened before the PRs it lists
+    add_reviewed_pulls(fake_github, 101)
     fake_github.requests.clear()
     body = update_queue(ctx, post=True)
-    rest = [(r["method"], r["path"]) for r in fake_github.requests if r["path"] != "/graphql"]
+    rest = [(r["method"], r["path"], r["query"].get("page")) for r in fake_github.requests if r["path"] != "/graphql"]
     [queue] = fake_github.issues
-    assert rest == [("GET", f"/repos/{fake_github.repo}/issues"), ("PATCH", f"/repos/{fake_github.repo}/issues/{queue['number']}")]
+    # /issues lists the PRs too, newest first, so the queue issue is on its second page.
+    issues = f"/repos/{fake_github.repo}/issues"
+    assert rest == [("GET", issues, None), ("GET", issues, "2"), ("PATCH", f"{issues}/{queue['number']}", None)]
     assert len(fake_github.requests_to("POST", r"^/graphql$")) == 2
     assert "### triage: ready (100)" in body and "#101 PR 101 · +3/−1 · sorted as ready" in body
     assert "#1 PR 1 " not in body  # the oldest of 101: past the cap of 100, as before
+
+
+@pytest.mark.parametrize("status", [200, 502])  # GitHub's GraphQL error for a timeout, or the gateway's
+def test_a_page_github_gives_up_on_is_asked_again_smaller(fake_github, make_context, monkeypatch, status):
+    monkeypatch.setattr("stratum_open.github.api.time.sleep", lambda seconds: None)  # the client's own retries of a 502
+    add_reviewed_pulls(fake_github, 101)
+    fake_github.pulls_page_limit, fake_github.pulls_page_timeout = 10, status
+    logged = []
+    ctx = make_context(model=None)
+    ctx.gh.log = logged.append
+    body = update_queue(ctx, post=False)
+    asked = [r["body"]["variables"]["first"] for r in fake_github.requests_to("POST", r"^/graphql$")]
+    assert asked == [50] * (1 if status == 200 else 3) + [10] * 10  # the rest of the pages stay small
+    assert "### triage: ready (100)" in body and "#101 PR 101 ·" in body and "#2 PR 2 ·" in body and "#1 PR 1 " not in body
+    assert [line.split(" (")[0] for line in logged] == ["GitHub didn't answer a query for 50 open PRs and their comments"]
+
+    fake_github.pulls_page_limit = 5  # 10 at a time is too many as well: the rebuild fails, as any other read would
+    with pytest.raises(GitHubError):
+        update_queue(ctx, post=False)
 
 
 def test_a_pr_with_more_comments_than_one_page_is_read_to_its_last_summary(fake_github, make_context):

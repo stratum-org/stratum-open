@@ -188,9 +188,9 @@ def test_the_queue_job_waits_for_a_newer_event_before_it_makes_a_call(tmp_path, 
     calls = []
 
     class Counting(FakeGitHub):
-        def open_pulls(self):
+        def open_pulls_with_comments(self, limit):
             calls.append(list(waits))  # what had been waited by the first read
-            return super().open_pulls()
+            return super().open_pulls_with_comments(limit)
 
     gh, waits = Counting(diff=DIFF, permissions={"erin": "write"}), []
     payload = {**pr_payload(), "issue": {"number": 7, "pull_request": {}}, "workflow_run": {"pull_requests": [{"number": 7}]},

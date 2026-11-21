@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from stratum_open.github import publish
 from stratum_open.runner import review_pull
 from stratum_open.triage_queue import TITLE, update_queue
 
@@ -26,8 +27,52 @@ def test_queue_with_a_thousand_open_prs_is_capped(fake_github, make_context):
     for n in range(1, 1001):
         fake_github.add_pull(n, diff=DIFF, title=f"PR {n}", body=None, linked_issues=[])
     body = update_queue(make_context(model=None), post=False)
-    assert "Not reviewed yet (100)" in body
-    assert len(fake_github.requests_to("GET", r"/issues/\d+/comments")) == 100
+    assert "Not reviewed yet (100)" in body and "#1000 PR 1000" in body and "#900 " not in body  # the newest 100
+    assert len(fake_github.requests_to("POST", r"^/graphql$")) == 2  # 50 PRs a query
+    assert fake_github.requests_to("GET", r"/issues/\d+/comments") == []
+
+
+def summary(key: str, *, additions: int = 3) -> str:
+    """A summary as Stratum posts it, with the triage the queue reads back."""
+    state = publish.State(head="a" * 40, triage={"key": key, "reasons": [f"sorted as {key}"], "evidence": [], "score": 1.0,
+                                                 "additions": additions, "deletions": 1})
+    return f"{publish.SUMMARY_MARKER}\n### Stratum review\n\n{state.encode()}"
+
+
+def comment(fake_github, number: int, body: str, login: str) -> None:
+    fake_github.issue_comments.setdefault(number, []).append(
+        {"id": fake_github.next_id(), "body": body, "user": {"login": login, "type": "Bot" if login.endswith("[bot]") else "User"}})
+
+
+def test_a_rebuild_with_a_hundred_open_prs_makes_two_rest_calls(fake_github, make_context):
+    for n in range(1, 102):
+        fake_github.add_pull(n, diff=DIFF, title=f"PR {n}")
+        comment(fake_github, n, "Thanks, looking.", "erin")
+        comment(fake_github, n, summary("ready"), fake_github.bot)
+    ctx = make_context(model=None)
+    update_queue(ctx, post=True)  # creates the issue
+    fake_github.requests.clear()
+    body = update_queue(ctx, post=True)
+    rest = [(r["method"], r["path"]) for r in fake_github.requests if r["path"] != "/graphql"]
+    [queue] = fake_github.issues
+    assert rest == [("GET", f"/repos/{fake_github.repo}/issues"), ("PATCH", f"/repos/{fake_github.repo}/issues/{queue['number']}")]
+    assert len(fake_github.requests_to("POST", r"^/graphql$")) == 2
+    assert "### triage: ready (100)" in body and "#101 PR 101 · +3/−1 · sorted as ready" in body
+    assert "#1 PR 1 " not in body  # the oldest of 101: past the cap of 100, as before
+
+
+def test_a_pr_with_more_comments_than_one_page_is_read_to_its_last_summary(fake_github, make_context):
+    fake_github.add_pull(7, diff=DIFF)
+    comment(fake_github, 7, summary("needs_work"), fake_github.bot)  # two summaries: two runs raced, and the last one counts
+    for n in range(230):
+        comment(fake_github, 7, f"Comment {n}", "erin")
+    comment(fake_github, 7, summary("ready", additions=9), fake_github.bot)
+    comment(fake_github, 7, summary("low_effort"), "mallory")  # not Stratum's
+    body = update_queue(make_context(model=None), post=False)
+    assert "### triage: ready (1)" in body and "#7 Add a thing · +9/−1" in body and "needs work" not in body
+    pages = [r["body"]["variables"].get("cursor") for r in fake_github.requests_to("POST", r"^/graphql$")]
+    assert pages == [None, "100", "200"]  # the PRs, then the rest of PR 7's 233 comments, 100 a query
+    assert fake_github.requests_to("GET", r"/issues/\d+/comments") == []
 
 
 def test_prs_with_no_ci_tests_or_issue_are_sorted_and_explained(fake_github, make_context, logs):

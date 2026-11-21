@@ -673,7 +673,34 @@ def _handler(fake: FakeGitHubServer) -> type[BaseHTTPRequestHandler]:
                 with fake._lock:
                     fake.resolved.add(root_id)
                 return {"data": {"resolveReviewThread": {"thread": {"id": thread_id}}}}
+            if "pullRequests(" in query:  # the open PRs with their comments, for the triage queue
+                first = int(variables.get("first") or 0)
+                if not 1 <= first <= 100:
+                    return {"data": None, "errors": [{"message": "Values of `first` and `last` must be within 1-100."}]}
+                pulls = [p for p in fake.pulls.values() if p["state"] == "open"]
+                if "direction:DESC" in query:  # newest first; here a higher number is a newer PR
+                    pulls.sort(key=lambda p: -p["number"])
+                start = int(variables.get("cursor") or 0)
+                has_next = start + first < len(pulls)
+                nodes = [{"number": p["number"], "title": p["title"], "isDraft": p["draft"], "author": self._gql_author(p.get("user")),
+                          "comments": self._gql_comments(p["number"], query, None)} for p in pulls[start:start + first]]
+                return {"data": {"repository": {"pullRequests": {
+                    "pageInfo": {"hasNextPage": has_next, "endCursor": str(start + first) if has_next else None}, "nodes": nodes}}}}
+            if "pullRequest(" in query and "comments(" in query:  # a later page of one PR's comments
+                number = variables.get("number")
+                if number not in fake.pulls:
+                    return {"data": {"repository": {"pullRequest": None}},
+                            "errors": [{"type": "NOT_FOUND", "message": f"Could not resolve to a PullRequest with the number of {number}."}]}
+                return {"data": {"repository": {"pullRequest": {"comments": self._gql_comments(number, query, variables.get("cursor"))}}}}
             return {"data": None, "errors": [{"message": "unsupported query in the fake"}]}
+
+        def _gql_comments(self, number: int, query: str, cursor: str | None) -> dict[str, Any]:
+            first = int(re.search(r"comments\(first:(\d+)", query).group(1))
+            comments = fake.issue_comments.get(number, [])
+            start = int(cursor or 0)
+            has_next = start + first < len(comments)
+            return {"pageInfo": {"hasNextPage": has_next, "endCursor": str(start + first) if has_next else None},
+                    "nodes": [self._gql_comment(c) for c in comments[start:start + first]]}
 
         def _threads(self, number: int) -> list[dict[str, Any]]:
             roots = [c for c in fake.review_comments if c.get("pull_request_number") == number and not c.get("in_reply_to_id")]
@@ -686,14 +713,14 @@ def _handler(fake: FakeGitHubServer) -> type[BaseHTTPRequestHandler]:
             return threads
 
         def _gql_comment(self, comment: dict[str, Any]) -> dict[str, Any]:
-            user = comment.get("user")
+            return {"databaseId": comment["id"], "body": comment.get("body") or "", "author": self._gql_author(comment.get("user"))}
+
+        def _gql_author(self, user: dict[str, Any] | None) -> dict[str, Any] | None:
             if not user:
-                author = None  # a deleted account
-            else:
-                login = user.get("login", "")
-                bot = login.endswith("[bot]") or user.get("type") == "Bot"
-                author = {"login": login.removesuffix("[bot]"), "__typename": "Bot" if bot else "User"}
-            return {"databaseId": comment["id"], "body": comment.get("body") or "", "author": author}
+                return None  # a deleted account
+            login = user.get("login", "")
+            bot = login.endswith("[bot]") or user.get("type") == "Bot"
+            return {"login": login.removesuffix("[bot]"), "__typename": "Bot" if bot else "User"}
 
         # ── helpers ──────────────────────────────────────────────────────
 

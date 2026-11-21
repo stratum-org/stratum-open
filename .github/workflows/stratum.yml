@@ -77,7 +77,7 @@ jobs:
   # review, when a PR closes or turns back into a draft, after `/stratum review`
   # or `/stratum ignore` or a CI result that re-sorts a PR, and on the daily and
   # manual runs. A comment without a command starts neither job.
-  # No model, but about one API call per open PR, so it waits a minute first
+  # No model and only a few API calls, but it still waits a minute first
   # (not on the daily and manual runs): every rebuild is in one group, and a
   # newer one cancels it while it waits, so a burst of events costs one rebuild.
   queue:

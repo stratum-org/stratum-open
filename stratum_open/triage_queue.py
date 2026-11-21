@@ -20,10 +20,10 @@ def update_queue(ctx: Context, *, post: bool = True, poster: str | None = None) 
     token reads the Action's summaries and posts as the token's user)."""
     gh = ctx.gh
     rows: list[tuple[PRFacts, Triage | None]] = []
-    for pull in gh.open_pulls()[:MAX_PULLS]:
+    for pull in gh.open_pulls_with_comments(MAX_PULLS):
         if pull.get("draft"):
             continue
-        summary = publish.find_summary(gh.issue_comments(pull["number"]), ctx.bot)
+        summary = publish.find_summary(pull["comments"], ctx.bot)
         found = publish.State.decode(summary["body"]).triage if summary else {}
         facts = PRFacts.from_pull(pull, [])
         facts.additions, facts.deletions = found.get("additions", 0), found.get("deletions", 0)

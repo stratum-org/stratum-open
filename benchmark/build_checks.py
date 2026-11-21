@@ -22,7 +22,9 @@ credentials. It needs Linux, `go` and `staticcheck` for the Go projects,
 and `cargo clippy` for the Rust ones.
 
 `fetch` caches each PR's diff in benchmark/.cache. It's the one step that
-needs a GitHub token, so `run` can go without one.
+needs a GitHub token, so `run` can go without one, and reads only the cache.
+A PR GitHub no longer has (it answers 404) is left out, and `run` lists it
+with the reason, as it does a PR whose head can't be checked out.
 
 `run` checks the PRs out one at a time, in the order of the lists (newest
 first), in one clone per project. Each PR keeps what the ones before it
@@ -80,11 +82,13 @@ from typing import Iterator
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import bench  # noqa: E402
 from bench import _fetch, _write  # noqa: E402
 from shell_checks import FINDING_COLUMNS, ISSUE_COLUMNS, VERDICTS, _cell, _key, _read  # noqa: E402
 from stratum_open.checks import clippy, go_vet, tools  # noqa: E402
 from stratum_open.checks.common import find_program  # noqa: E402
 from stratum_open.diff import FileDiff, parse_diff  # noqa: E402
+from stratum_open.github.api import GitHubError  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 PRS = [str(HERE / "planted" / "clean-go.json"), str(HERE / "planted" / "clean-rust.json")]
@@ -120,9 +124,15 @@ def main() -> int:
         return _score(Path(args.out))
     prs = picked(args.prs, args.repo)
     if args.command == "fetch":
+        gone = []
         for item in prs:
-            _fetch(item["repo"], int(item["pr"]))
-        print(f"Fetched {len(prs)} PR(s)", flush=True)
+            try:
+                _fetch(item["repo"], int(item["pr"]))
+            except GitHubError as exc:
+                if exc.status != 404:
+                    raise
+                gone.append(f"{item['repo']}#{item['pr']}")
+        print(f"Fetched {len(prs) - len(gone)} PR(s)" + (f"; GitHub has no {', '.join(gone)} any more" if gone else ""), flush=True)
         return 0
     return _run(prs, Path(args.repos), Path(args.out), args.timeout)
 
@@ -160,6 +170,13 @@ def fetch_heads(where: Path, numbers: list[int]) -> None:
     if refs and _git(where, "fetch", "--quiet", "origin", *refs).returncode != 0:
         for ref in refs:
             _git(where, "fetch", "--quiet", "origin", ref)
+
+
+def cached_diff(repo: str, number: int) -> str | None:
+    """The PR's diff as `fetch` cached it, or None when it isn't there."""
+    if not (bench.CACHE / f"{repo.replace('/', '__')}__{number}.json").exists():
+        return None
+    return _fetch(repo, number)[1]
 
 
 def check_out(where: Path, head: str) -> bool:
@@ -449,15 +466,17 @@ def _run(prs: list[dict], repos: Path, out: Path, timeout: float) -> int:
         os.environ["CARGO_TARGET_DIR"] = str(where) + ".target"
         for order, item in enumerate(items):
             number, case = int(item["pr"]), f"{repo}#{item['pr']}"
-            _, text = _fetch(repo, number)
-            files = parse_diff(text)
             entry = {**item, "order": order, "error": ""}
-            if not check_out(where, item["head"]):
-                entry["error"] = f"its head {item['head'][:12]} couldn't be checked out"
+            text = cached_diff(repo, number)
+            if text is None or not check_out(where, item["head"]):
+                entry["error"] = (f"its head {item['head'][:12]} couldn't be checked out" if text is not None else
+                                  "its diff isn't in the cache: GitHub has no such PR any more, or `fetch` wasn't run for it")
+                entry["skipped"] = True
                 listed.append(entry)
                 print(f"{case}: {entry['error']}", flush=True)
                 save()
                 continue
+            files = parse_diff(text)
             entry["toolchains"], entry["error"], entry["setup_seconds"] = prepare(str(where), files)
             result = measure(str(where), files, timeout)
             found = issues(str(where), files, result["calls"])
@@ -577,12 +596,14 @@ def _megabytes(value: float | None) -> str:
 
 def _score(out: Path) -> int:
     prs, rows = load(out)
-    projects = len({p["repo"] for p in prs})
+    built = [p for p in prs if not p.get("skipped")]
+    projects = len({p["repo"] for p in built})
     lines = [
         "# go vet and Clippy on merged PRs", "",
-        f"{len(prs)} merged PRs from {projects} project{'' if projects == 1 else 's'}, each checked out at its head and built, "
+        f"{len(built)} merged PRs from {projects} project{'' if projects == 1 else 's'}, each checked out at its head and built, "
         "as a review with the check on would. Each issue the programs reported on a line a PR adds was read and marked: "
-        "right when what it says is true of the code, wrong when the code works as meant (a false alarm), unsure otherwise.", "",
+        "right when what it says is true of the code, wrong when the code works as meant (a false alarm), unsure otherwise."
+        + (f" {len(prs) - len(built)} more couldn't be read; they're listed under \"What didn't run\"." if len(built) < len(prs) else ""), "",
         "| Check | PRs it read | Added lines | Findings | Right | Wrong | Unsure | Didn't build | Past the review's limit |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]

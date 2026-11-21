@@ -257,6 +257,54 @@ def test_only_the_projects_asked_for_are_run():
         build_checks.picked(lists, ["acme/widget"])
 
 
+def test_fetch_leaves_out_a_pr_github_no_longer_has(monkeypatch, tmp_path, capsys):
+    from stratum_open.github.api import GitHubError
+
+    lists = tmp_path / "prs.json"
+    lists.write_text(json.dumps([{"repo": "acme/widget", "pr": n, "head": "a" * 40} for n in (1, 2, 3)]))
+    fetched = []
+
+    def fetch(repo, number):
+        if number == 2:
+            raise GitHubError(404, "Not Found")  # a PR GitHub has deleted
+        fetched.append(number)
+        return {}, ""
+
+    monkeypatch.setattr(build_checks, "_fetch", fetch)
+    monkeypatch.setattr(sys, "argv", ["build_checks.py", "fetch", "--prs", str(lists)])
+    assert build_checks.main() == 0 and fetched == [1, 3]
+    assert "Fetched 2 PR(s); GitHub has no acme/widget#2 any more" in capsys.readouterr().out
+    # Anything else GitHub answers still stops it.
+    monkeypatch.setattr(build_checks, "_fetch", lambda repo, number: (_ for _ in ()).throw(GitHubError(500, "Server Error")))
+    with pytest.raises(GitHubError):
+        build_checks.main()
+
+
+def test_run_lists_a_pr_whose_diff_wasnt_fetched_and_builds_the_rest(monkeypatch, tmp_path):
+    shas = origin_with_prs(tmp_path / "origin", {5: {"a.go": GO_FILE}})
+    monkeypatch.setattr(build_checks, "SOURCE", str(tmp_path / "origin"))
+    monkeypatch.setattr(bench, "CACHE", tmp_path / "cache")
+    monkeypatch.setattr(build_checks, "prepare", lambda worktree, files: ({}, "", 0.0))
+    monkeypatch.delenv("CARGO_TARGET_DIR", raising=False)
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    (tmp_path / "cache").mkdir()
+    (tmp_path / "cache" / "acme__widget__5.json").write_text(json.dumps({"pull": {"title": "t"}, "diff": edit("a.go", GO_FILE, 7)}))
+    installed(monkeypatch, "go")
+    fake_run(monkeypatch, (0, "{}\n", ""))
+    out = tmp_path / "run"
+    build_checks._run([{"repo": "acme/widget", "pr": 4, "head": "b" * 40}, {"repo": "acme/widget", "pr": 5, "head": shas[5]}],
+                      tmp_path / "repos", out, 60)
+    gone, built = json.loads((out / "prs.json").read_text())
+    assert gone["skipped"] and gone["error"].startswith("its diff isn't in the cache: GitHub has no such PR any more")
+    assert "skipped" not in built and built["seconds"] and built["runs"][0]["built"] == 1
+    build_checks._score(out)
+    text = (out / "summary.md").read_text(encoding="utf-8")
+    assert text.count("1 merged PRs from 1 project,") == 1 and "1 more couldn't be read" in text
+    assert "| acme/widget#4 | its diff isn't in the cache" in text
+    # The first PR built is the one with nothing cached, whatever came before it.
+    assert "| acme/widget | go vet | 1 | " in text
+
+
 # ── the summary ──────────────────────────────────────────────────────────
 
 

@@ -181,7 +181,7 @@ def review_pull(ctx: Context, number: int, *, full: bool = False, post: bool = T
         return Outcome(number, "skipped", note="the PR isn't open")
     head = pull["head"]["sha"]
     if at and head != at:
-        return Outcome(number, "superseded", note="a newer commit arrived")
+        return Outcome(number, "superseded", note="a newer commit arrived", head=head)
     files = parse_diff(gh.pull_diff(number))
     paths = [f.path for f in files]
     comments = gh.issue_comments(number)

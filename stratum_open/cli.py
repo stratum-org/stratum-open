@@ -86,13 +86,15 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("needs-model", help="the GitHub Action: print whether this event can call the model")
     gitlab = sub.add_parser("gitlab", help="GitLab CI's entry point: review the pipeline's merge request")
     gitlab.add_argument("--dry-run", action="store_true", help="print the review instead of posting it")
+    mcp = sub.add_parser("mcp", help="an MCP server on stdio, so a coding agent can check its changes before it opens a PR")
+    mcp.add_argument("--repo", default=".", help="the checkout its tools read (default: here)")
 
     args = parser.parse_args(argv)
     _printable_output()
     command = {
         "review": _review, "record": _record, "policy": _policy, "triage": _triage,
         "data": _data, "serve": _serve, "action": _action, "needs-model": _needs_model,
-        "replay": _replay, "gitlab": _gitlab,
+        "replay": _replay, "gitlab": _gitlab, "mcp": _mcp,
     }[args.command]
     # Exit codes: 0 done; 1 a usage problem, or `review --local` found something critical;
     # 2 GitHub or the network refused (the message says what); 130 stopped with Ctrl-C.
@@ -175,6 +177,32 @@ def _review(args) -> int:
 def _review_local(args, base: str) -> int:
     """Review `git diff BASE...HEAD` here, with the policy as it is on BASE,
     through the same engine call as a review on GitHub."""
+    local = local_review(base, make_model=None if args.no_model else model_from_policy)
+    if local is None:
+        print(f"No changes between {base} and HEAD.")
+        return 0
+    result, _, _, model = local
+    if model is not None:
+        print(f"Profile: {result.profile} ({result.profile_why}).", file=sys.stderr)
+        if result.model_settings:
+            print(model_settings_line(model.name, result.model_settings), file=sys.stderr)
+        if result.review is not None and result.review.calls and not result.review.ran:
+            print("The model didn't answer: " + "; ".join(sorted({c['error'] for c in result.review.calls if c.get('error')})), file=sys.stderr)
+        elif result.review is not None and result.review.summary:
+            print(f"What this changes: {result.review.summary}\n")
+    _print_findings(result.findings)
+    for note in result.check_notes:
+        print(note, file=sys.stderr)
+    _write_json(args.json, result.findings)
+    return 1 if any(f.severity == "critical" for f in result.findings) else 0
+
+
+def local_review(base: str, *, make_model=model_from_policy):
+    """`review --local`'s review of this checkout, which `stratum-open mcp`
+    runs too: (the engine's result, the files, the text read of them, the
+    model), or None when nothing changed. `make_model(policy)` makes the
+    model from the policy on BASE; None runs the checks only. Nothing is
+    printed to stdout."""
     from stratum_open.checks.common import looks_binary
     from stratum_open.checks.dependencies import PackageLookup
     from stratum_open.engine import analyze
@@ -193,11 +221,10 @@ def _review_local(args, base: str) -> int:
         sys.exit(f"git couldn't compare {base} with HEAD: {(exc.stderr or '').strip() or 'is this a git repo, and does that branch exist?'}")
     files = parse_diff(text)
     if not files:
-        print(f"No changes between {base} and HEAD.")
-        return 0
+        return None
     policy = parse_policy(_git_or_none(".", "show", f"{base}:{POLICY_PATH}"))
     _policy_notes(policy)
-    model = None if args.no_model else model_from_policy(policy)
+    model = None if make_model is None else make_model(policy)
     # The checks read whole files where the diff isn't enough (workflows,
     # manifests, Bandit, moved files), in the order and to the limits they do
     # on GitHub. Then, up to MAX_LOCAL_CONTENTS in all, the moved files those
@@ -232,19 +259,7 @@ def _review_local(args, base: str) -> int:
         + unknown_name_findings(files, policy, top, contents=contents, applied=True)
         + removed_name_findings(files, policy, top, contents=contents, applied=True),
     )
-    if model is not None:
-        print(f"Profile: {result.profile} ({result.profile_why}).", file=sys.stderr)
-        if result.model_settings:
-            print(model_settings_line(model.name, result.model_settings), file=sys.stderr)
-        if result.review is not None and result.review.calls and not result.review.ran:
-            print("The model didn't answer: " + "; ".join(sorted({c['error'] for c in result.review.calls if c.get('error')})), file=sys.stderr)
-        elif result.review is not None and result.review.summary:
-            print(f"What this changes: {result.review.summary}\n")
-    _print_findings(result.findings)
-    for note in result.check_notes:
-        print(note, file=sys.stderr)
-    _write_json(args.json, result.findings)
-    return 1 if any(f.severity == "critical" for f in result.findings) else 0
+    return result, files, contents, model
 
 
 def _local_worktree(policy: Policy, files: list, top: str):
@@ -436,6 +451,12 @@ def _gitlab(args) -> int:
     from stratum_open.gitlab.ci import main as gitlab_main
 
     return gitlab_main(post=not args.dry_run)
+
+
+def _mcp(args) -> int:
+    from stratum_open.mcp_server import serve
+
+    return serve(args.repo)
 
 
 def _needs_model(args) -> int:

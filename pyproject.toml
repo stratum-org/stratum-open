@@ -30,6 +30,8 @@ bandit = ["bandit>=1.7"]
 ruff = ["ruff>=0.16"]
 # The parser for checks.floating_promises.
 js = ["tree-sitter>=0.23", "tree-sitter-javascript>=0.23", "tree-sitter-typescript>=0.23"]
+# `stratum-open mcp`. The SDK's 2.0 renamed and reshaped its server API, so the major version is pinned.
+mcp = ["mcp>=2,<3"]
 
 [tool.setuptools]
 packages = ["stratum_open", "stratum_open.checks", "stratum_open.repo", "stratum_open.github", "stratum_open.gitlab"]

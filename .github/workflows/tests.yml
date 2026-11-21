@@ -29,6 +29,11 @@ jobs:
           cargo clippy --version || rustup component add clippy
           cargo clippy --version
       - run: pytest -q
+      - name: The MCP server's tests, with the mcp extra
+        # The suite above runs without the extra, as a core install does, and skips these.
+        run: |
+          pip install -e ".[mcp]"
+          pytest -q tests/test_mcp_server.py
 
   e2e:
     # The end-to-end suite against a fake model server and a fake GitHub API: no network, no model.
@@ -42,5 +47,5 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install -e ".[test,app,bandit,ruff,js]"
+      - run: pip install -e ".[test,app,bandit,ruff,js,mcp]"
       - run: pytest tests/e2e -m "not live" -q

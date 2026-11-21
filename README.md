@@ -189,6 +189,56 @@ Gitea and Forgejo aren't supported yet; [docs/gitea-forgejo.md](docs/gitea-forge
 - `stratum-open replay owner/repo`: the label each of your last 50 closed PRs would have got, beside whether it was merged. No model, and nothing is posted.
 - `stratum-open triage owner/repo`: the sorted queue.
 - `stratum-open data …`: see or delete what the App stored.
+- `stratum-open mcp`: the same checks and review for a coding agent ([below](#use-it-from-your-coding-agent)).
+
+## Use it from your coding agent
+
+`stratum-open mcp` is an [MCP](https://modelcontextprotocol.io) server, so a coding agent (VS Code's agent mode, Cursor, Zed, Cline, Continue and others) can have its own changes reviewed before it opens a PR, and fix what's found first. It runs on your machine, with your model or none, and sends nothing to Stratum. It needs the `mcp` extra: `pip install "stratum-open[mcp]"`.
+
+Its tools only read: none writes to GitHub, comments, labels or pushes.
+
+| Tool | What it does | Model |
+| --- | --- | --- |
+| `check_local(base="main")` | `review --local` without the model: the checks on the commits between `base` and HEAD, in seconds. | No |
+| `review_local(base="main", timeout=600)` | `review --local`: the checks and the model's review. It stops after `timeout` seconds with what it has, and reports progress to a client that asks for it. With no model answering, it returns the checks and says so. | Yes |
+| `explain_finding(fingerprint)` | One finding from an earlier call, with the code around it and how to fix it. Kept in memory until the server stops. | No |
+| `check_policy(path=".stratum/policy.yml")` | `policy check`, on a file in the checkout. | No |
+| `triage_pr(repo, number)` | The triage label an open PR would get from the checks, with its reasons, as `review owner/repo#N --no-model` would give it. Reads GitHub with `GITHUB_TOKEN` or the GitHub CLI's sign-in. | No |
+
+A finding comes back as JSON: `fingerprint`, `rule`, `severity`, `category`, `source`, `path`, `line`, `line_end`, `title`, `message`, `suggestion` and `code`, the lines it's on. An answer holds at most 50, most severe first, and `omitted` counts the rest. The tools review HEAD, as a PR would show it, so an edit that isn't committed isn't read; `uncommitted` lists those. The model comes from the same `STRATUM_MODEL_*` variables as the CLI, and the policy from `.stratum/policy.yml` as it is on `base`.
+
+**VS Code**, in `.vscode/mcp.json` ([format](https://code.visualstudio.com/docs/copilot/reference/mcp-configuration)):
+
+```json
+{
+  "servers": {
+    "stratum-open": {
+      "type": "stdio",
+      "command": "stratum-open",
+      "args": ["mcp"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
+```
+
+**Cursor**, in `.cursor/mcp.json` ([format](https://cursor.com/docs/context/mcp)). Cursor doesn't document the folder a server starts in, so the checkout is passed:
+
+```json
+{
+  "mcpServers": {
+    "stratum-open": {
+      "type": "stdio",
+      "command": "stratum-open",
+      "args": ["mcp", "--repo", "${workspaceFolder}"]
+    }
+  }
+}
+```
+
+**Any other client** that starts a server on stdio: the command is `stratum-open mcp --repo /path/to/your/checkout`. It speaks MCP on stdin and stdout and logs on stderr ([the stdio transport](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio)). Many clients take the same `mcpServers` shape as Cursor.
+
+If `stratum-open` is installed in a virtual environment, give its full path as `command`. A client may start the server with only a few of your environment variables, so put the ones it needs in the entry's `env`: `STRATUM_MODEL_ENDPOINT` and `STRATUM_MODEL_NAME` for another model than the policy's, and for `triage_pr` the token, as `"GITHUB_TOKEN": "${env:GITHUB_TOKEN}"` in VS Code and Cursor, never the token itself in a file you commit. Stratum's agent-files check flags a PR that changes `.vscode/mcp.json`: an MCP server added to a repo runs in every contributor's agent, so a maintainer should read it.
 
 ## Models
 

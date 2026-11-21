@@ -131,7 +131,7 @@ GitHub's Ubuntu runners come with Go, and with Rust and Clippy. If your `go.mod`
 
 ### PRs written by coding agents
 
-Coding agents leave their own signatures on the PRs they open, and Stratum can read them. It doesn't guess from the code: a person who used an editor's completions leaves none of these.
+Coding agents leave their own signatures on the PRs they open, and Stratum can read them. It doesn't guess from the code: a person who used an editor's completions leaves none of these. The author of a PR can remove every one of them (open it from their own account, rewrite the commits, edit the description, rename the branch), so treat the result as a hint for sorting your queue, not as a way to keep agent PRs out.
 
 | Signal | Example | Strength |
 | --- | --- | --- |

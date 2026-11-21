@@ -42,6 +42,8 @@ Only the findings near a planted bug were marked, by the rule used for the earli
 
 The time. A maintainer waiting on a review on the free runner waits three times as long. It's offered as an opt-in for projects that would rather have the catches: set `review.logic_pass: true` and `review.context_lines: 10`.
 
+Since 21 Nov it is the default for `gpt-oss`, after the test cases were run again on newer code, with the time in the README's Models table ([notes](../2026-11-21-gpt-oss-test-split-actions-cpu/notes.md)).
+
 ## What it doesn't show
 
 - One model. The logic pass's prompt was written for a model that can work through a list of decisions; it wasn't run on the 7B or 14B models.

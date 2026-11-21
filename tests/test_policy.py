@@ -216,26 +216,50 @@ def test_profiles_fill_in_only_what_the_file_left_out():
     assert pinned.review.diff_format == "interleaved" and pinned.checks.bandit_low is True
 
 
+GPT_OSS = {"review.reasoning": "low", "review.verify": "strict", "review.logic_pass": True, "review.context_lines": 10}
+
+
 @pytest.mark.parametrize("name", ["gpt-oss:20b", "gpt-oss", "GPT-OSS:120b", "library/gpt-oss:20b", "registry.ollama.ai/library/gpt-oss:latest"])
-def test_gpt_oss_gets_low_reasoning_and_strict_verify(name):
+def test_gpt_oss_gets_low_reasoning_strict_verify_and_the_logic_pass_with_context(name):
     from stratum_open.profiles import MODEL_SETTINGS, for_model, keys_of
 
     for _, settings in MODEL_SETTINGS:
         assert set(settings) <= keys_of(Policy)  # only real keys
     policy, applied = for_model(parse_policy(None), name)
-    assert (policy.review.reasoning, policy.review.verify) == ("low", "strict")
+    assert (policy.review.reasoning, policy.review.verify, policy.review.logic_pass, policy.review.context_lines) == ("low", "strict", True, 10)
+    assert applied == GPT_OSS
+
+
+def test_gpt_oss_20b_gets_the_logic_pass_and_ten_lines_of_context_over_the_small_profile():
+    from stratum_open.profiles import ModelInfo, apply, for_model
+
+    small = apply(parse_policy(None), "small", ModelInfo(billions=20.9))
+    assert (small.review.logic_pass, small.review.context_lines) == (False, 0)
+    policy, applied = for_model(small, "gpt-oss:20b")
+    assert (policy.review.logic_pass, policy.review.context_lines) == (True, 10) and applied == GPT_OSS
+    # The faster review is two settings away, and the policy file's values win.
+    faster = parse_policy("review:\n  logic_pass: false\n  context_lines: 0\n")
+    policy, applied = for_model(apply(faster, "small"), "gpt-oss:20b")
+    assert (policy.review.logic_pass, policy.review.context_lines) == (False, 0)
     assert applied == {"review.reasoning": "low", "review.verify": "strict"}
 
 
-def test_the_policy_files_own_reasoning_and_verify_win_for_gpt_oss():
+def test_the_policy_files_own_values_win_for_gpt_oss():
     from stratum_open.profiles import for_model, model_settings_line
 
-    policy, applied = for_model(parse_policy("review:\n  verify: none\n"), "gpt-oss:20b")
+    policy, applied = for_model(parse_policy("review:\n  verify: none\n  logic_pass: false\n  context_lines: 3\n"), "gpt-oss:20b")
     assert (policy.review.reasoning, policy.review.verify) == ("low", "none") and applied == {"review.reasoning": "low"}
     assert model_settings_line("gpt-oss:20b", applied) == (
         "Set for `gpt-oss:20b`, since the policy file doesn't set it: `review.reasoning: low` (without it, the thinking uses up "
         "the output budget and most replies come back empty).")
-    pinned = parse_policy("review:\n  reasoning: default\n  verify: lenient\n")
+    policy, applied = for_model(parse_policy("review:\n  verify: none\n"), "gpt-oss:20b")
+    # Three or more are kept apart with semicolons, and a yes or no is written as the policy file would have it.
+    assert model_settings_line("gpt-oss:20b", applied) == (
+        "Set for `gpt-oss:20b`, since the policy file doesn't set them: `review.reasoning: low` (without it, the thinking uses up "
+        "the output budget and most replies come back empty); `review.logic_pass: true` (with ten lines of context it found 27 of 39 "
+        "planted bugs against 18, though a review takes about three times as long); `review.context_lines: 10` (the logic pass finds "
+        "more with the code around each change, and either alone finds only one or two more).")
+    pinned = parse_policy("review:\n  reasoning: default\n  verify: lenient\n  logic_pass: false\n  context_lines: 0\n")
     assert for_model(pinned, "gpt-oss:20b") == (pinned, {})
 
 

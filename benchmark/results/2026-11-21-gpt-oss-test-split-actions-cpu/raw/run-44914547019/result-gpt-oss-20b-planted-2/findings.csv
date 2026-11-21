@@ -1,0 +1,2 @@
+case,model,variant,version,severity,category,path,line,near,title,detail,verdict,note
+pallets/jinja#2098,gpt-oss:20b,reasoning-low-verify-strict,planted,medium,bug,src/jinja2/__init__.py,55,,Incorrect package name in version lookup,"The code attempts to fetch the version of the ""werkzeug"" package instead of ""jinja2"", causing an incorrect or missing version to be returned.",right,"Real: the merged PR looks up the version of `werkzeug`, not `jinja2`. Its maintainers fixed it two minutes after it merged."

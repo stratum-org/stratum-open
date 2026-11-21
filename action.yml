@@ -11,8 +11,9 @@ inputs:
     default: ${{ github.token }}
   ollama-model:
     description: >-
-      Run this model with Ollama on the runner itself, e.g. gpt-oss:20b (the example's: it gets review.reasoning: low
-      and review.verify: strict unless .stratum/policy.yml sets them, and is a 13.8 GB download each run) or
+      Run this model with Ollama on the runner itself, e.g. gpt-oss:20b (the example's: it gets review.reasoning: low,
+      review.verify: strict, review.logic_pass: true and review.context_lines: 10 unless .stratum/policy.yml sets
+      them, and is a 13.8 GB download each run) or
       qwen2.5-coder:7b, which stays in the Actions cache and runs faster but finds far less. No server needed.
       Leave empty to use the endpoint in .stratum/policy.yml (or model-endpoint).
     default: ""

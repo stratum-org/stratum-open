@@ -72,10 +72,12 @@ jobs:
       - uses: stratum-org/stratum-open@v0.3.0
         with:
           # Runs the model on the runner: no server needed, but slow on CPU.
-          # gpt-oss:20b found 16 of 39 planted bugs on this runner, against 1 of 39 for
-          # qwen2.5-coder:7b, with about 0.2 wrong comments per clean PR against 0.4, in
-          # about 3.5 min a PR against 2.5. Stratum sets review.reasoning: low and
-          # review.verify: strict for it unless .stratum/policy.yml sets them.
+          # gpt-oss:20b found 27 of 39 planted bugs on this runner, against 1 of 39 for
+          # qwen2.5-coder:7b, with about 0.4 wrong comments per clean PR for both, in
+          # about 11 min a PR against 2.5. Stratum sets review.reasoning: low,
+          # review.verify: strict, review.logic_pass: true and review.context_lines: 10
+          # for it unless .stratum/policy.yml sets them. With the last two set to false
+          # and 0 there, it found 16 of 39 in about 3.5 min a PR.
           # At 13.8 GB it's too big for the Actions cache, so it's downloaded each run
           # (a couple of minutes more), and the action frees disk space for it.
           # For the fastest run, use qwen2.5-coder:7b, which stays in the cache.

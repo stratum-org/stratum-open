@@ -35,10 +35,11 @@ review:
                                #   strict: for models up to about 8B, which can't tell (cuts their wrong comments by ~60%);
                                #   lenient: for 14B-class models, which can (keeps their real catches, drops ~30% of the wrong ones)
   reasoning: default           # default | low | off: how long a thinking model (gpt-oss, Qwen3) thinks first; on a CPU, `low` leaves room for the answer
-                               #   gpt-oss gets `reasoning: low` and `verify: strict` unless this file sets them
+                               #   gpt-oss gets `reasoning: low`, `verify: strict`, `logic_pass: true` and `context_lines: 10` unless this file sets them
   logic_pass: false            # true adds one call per chunk that looks only for logic errors (a condition the wrong way round, an off-by-one,
                                #   `and` for `or`), working through the added lines that make a decision one at a time
-                               #   With `context_lines: 10`, `gpt-oss:20b` found 27 of 39 planted bugs against 18 without both; a review takes 2-4x as long
+                               #   With `context_lines: 10`, `gpt-oss:20b` found 27 of 39 planted bugs against 18 without both; a review takes 2-4x as long.
+                               #   For gpt-oss's faster review, set `logic_pass: false` and `context_lines: 0` here
   agent_prs_logic_pass: false  # true runs that logic pass only on a PR a coding agent likely wrote (see triage.agent_prs)
   rules: []                    # your own review rules in plain words, e.g. "Every SQL query is parameterized."
   ignore_paths: ["**/*.lock", "**/package-lock.json", "**/pnpm-lock.yaml", "**/go.sum",

@@ -1,0 +1,6 @@
+case,set,kind,path,line,model,variant,version,seconds,shown,calls,failed_calls,findings,near,error
+pallets/flask#5917,test,negated-condition,src/flask/sansio/app.py,641,gpt-oss:20b,reasoning-low-verify-strict,clean,341.5,yes,1,0,0,0,
+encode/httpx#3690,test,negated-condition,src/httpx/_server.py,35,gpt-oss:20b,reasoning-low-verify-strict,clean,225.7,yes,1,0,0,0,
+pydantic/pydantic#14213,test,flipped-comparison,pydantic/plugin/_loader.py,43,gpt-oss:20b,reasoning-low-verify-strict,clean,208.5,yes,1,0,0,0,
+Textualize/textual#6455,test,wrong-boolean,src/textual/screen.py,2028,gpt-oss:20b,reasoning-low-verify-strict,clean,213.9,yes,1,0,0,0,
+Textualize/rich#3953,test,off-by-one,rich/cells.py,58,gpt-oss:20b,reasoning-low-verify-strict,clean,197.4,yes,1,0,0,0,

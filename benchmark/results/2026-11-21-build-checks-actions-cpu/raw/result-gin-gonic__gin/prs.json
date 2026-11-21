@@ -1,0 +1,552 @@
+[
+ {
+  "repo": "gin-gonic/gin",
+  "pr": 4878,
+  "head": "e3c7bb5c75a9b60dcfade3ef6f97a716327f8070",
+  "order": 0,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 2,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 32.3
+  },
+  "programs": {
+   "go vet": 27.6,
+   "staticcheck": 4.7
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "go: downloading github.com/gin-contrib/sse v1.1.0",
+    "seconds": 27.6,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 4.7,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89067.0,
+   "clone_mb": 2.8,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "gin-gonic/gin",
+  "pr": 4861,
+  "head": "88de12a4071c16f3fac1066c14096fcafa7c01e0",
+  "order": 1,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 0.8
+  },
+  "programs": {
+   "go vet": 0.3,
+   "staticcheck": 0.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.3,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 0.5,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89063.8,
+   "clone_mb": 2.8,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "gin-gonic/gin",
+  "pr": 4854,
+  "head": "18ac953cb3a9ac9a790509c97a44abdaa998d823",
+  "order": 2,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 0.8
+  },
+  "programs": {
+   "go vet": 0.3,
+   "staticcheck": 0.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.3,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 0.5,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89060.6,
+   "clone_mb": 2.9,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "gin-gonic/gin",
+  "pr": 4852,
+  "head": "742c541a91ceb6d177429f24b87bc4d81abb3868",
+  "order": 3,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 7,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 0.8
+  },
+  "programs": {
+   "go vet": 0.3,
+   "staticcheck": 0.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.3,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 0.5,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89057.4,
+   "clone_mb": 2.9,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "gin-gonic/gin",
+  "pr": 4830,
+  "head": "6b602124077761197b2c7478a7a7fd668fed47e9",
+  "order": 4,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 7,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 5.9
+  },
+  "programs": {
+   "go vet": 4.7,
+   "staticcheck": 1.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "go: downloading golang.org/x/net v0.56.0",
+    "seconds": 4.7,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 1.2,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88941.1,
+   "clone_mb": 3.0,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "gin-gonic/gin",
+  "pr": 4819,
+  "head": "2c2068ff3dc45b128962514179f075bc4a70be43",
+  "order": 5,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 8,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 0.8
+  },
+  "programs": {
+   "go vet": 0.3,
+   "staticcheck": 0.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.3,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 0.5,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88937.9,
+   "clone_mb": 3.0,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "gin-gonic/gin",
+  "pr": 4814,
+  "head": "f9d00bb54978874eabb118fb4cb87d17bfe26dcc",
+  "order": 6,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 2,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 5,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 0.8
+  },
+  "programs": {
+   "go vet": 0.3,
+   "staticcheck": 0.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.3,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 0.5,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88934.7,
+   "clone_mb": 3.0,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "gin-gonic/gin",
+  "pr": 4806,
+  "head": "a27703b027a81de65d387bcb59d8cc6d904c7f03",
+  "order": 7,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 2,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 39,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 0.8
+  },
+  "programs": {
+   "go vet": 0.5,
+   "staticcheck": 0.3
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.5,
+    "timed_out": false,
+    "built": 2
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 0.3,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88931.0,
+   "clone_mb": 3.1,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "gin-gonic/gin",
+  "pr": 4805,
+  "head": "be944b4e196e1cd71be0a26d28622c3e4a8c7e07",
+  "order": 8,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 2,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 11,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 0.9
+  },
+  "programs": {
+   "go vet": 0.3,
+   "staticcheck": 0.6
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.3,
+    "timed_out": false,
+    "built": 2
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 0.6,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88927.6,
+   "clone_mb": 3.1,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "gin-gonic/gin",
+  "pr": 4800,
+  "head": "4b8721179b4e4b665b65b0cbfea3340cefad8427",
+  "order": 9,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 34,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 0.8
+  },
+  "programs": {
+   "go vet": 0.3,
+   "staticcheck": 0.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.3,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 0.5,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88924.5,
+   "clone_mb": 3.1,
+   "target_mb": 0.0
+  }
+ }
+]

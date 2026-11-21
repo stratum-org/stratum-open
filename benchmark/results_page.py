@@ -28,6 +28,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import bench  # noqa: E402
+import build_checks  # noqa: E402
 import corpus  # noqa: E402
 import floating_promises  # noqa: E402
 import planted  # noqa: E402
@@ -38,7 +39,7 @@ from stratum_open.checks.promises import RULE as FLOATING_PROMISE  # noqa: E402
 RESULTS = HERE / "results"
 PAGE = HERE / "RESULTS.md"
 Z = 1.959964  # 95% of a normal distribution lies within this many standard deviations
-KINDS = ("models", "checks", "rules", "corpus", "awaits", "as_new", "merged", "shell")
+KINDS = ("models", "checks", "rules", "corpus", "awaits", "as_new", "merged", "shell", "build")
 # The rules a policy has to turn on, by the setting that does it. A rule is
 # one of these when its name is one listed here, or starts with one and a slash.
 OFF_BY_DEFAULT = {
@@ -114,6 +115,8 @@ def _read_folder(folder: Path) -> dict:
         run["merged"] = _merged_runs(folder)
     if (folder / "whole.json").exists():
         run["shell"] = shell_checks.scores(folder)
+    elif any(folder.rglob("kept.csv")) and any(folder.rglob("prs.json")):  # build_checks.py: its kept.csv and prs.json, in a folder per project
+        run["build"] = build_checks.scores(folder)
     if not any(run.get(kind) for kind in KINDS):
         raise Inconsistent("it has no results that a scorer counts")
     return run
@@ -298,6 +301,8 @@ def render(page: dict) -> str:
         lines += _awaits_section(page)
     if page["shell"]:
         lines += _shell_section(page["shell"])
+    if page["build"]:
+        lines += _build_section(page["build"])
     if page["merged"]:
         lines += _merged_section(page["merged"])
     lines += ["", "## Not included", ""]
@@ -502,6 +507,25 @@ def _shell_section(rows: list[dict]) -> list[str]:
             str(row["whole"]), str(row["whole_right"]), str(row["whole_wrong"]), str(row["whole_unsure"]),
             _count(row["whole_right"], row["whole_right"] + row["whole_wrong"]) if row["whole_right"] + row["whole_wrong"] else "-",
             _interval(row["whole_right"], row["whole_right"] + row["whole_wrong"]),
+        ] for row in rows],
+    )
+
+
+def _build_section(rows: list[dict]) -> list[str]:
+    lines = [
+        "",
+        "## go vet and Clippy",
+        "",
+        "Both are off unless their setting is on, and both build the PR's code. Each ran on merged PRs checked out at their head, where any finding is a "
+        "possible false alarm. Every issue the programs reported on a line a PR adds is marked right when what it says is true of the code, "
+        "and wrong (a false alarm) when the code works as meant. A PR didn't build when a coverage line says so, or when the program built nothing.",
+        "",
+    ]
+    return lines + _table(
+        ["Setting", "Run", "Merged PRs", "Added lines", "Findings on them", "Right", "Wrong", "Unsure", "Didn't build", "Past the review's limit"],
+        [[
+            f"`{row['setting']}`", _link(row["run"]), str(row["prs"]), f"{row['lines']:,}", str(row["findings"]), str(row["right"]), str(row["wrong"]),
+            str(row["unsure"]), str(row["unbuilt"]), f"{row['slow']} (over {row['limit']} s)",
         ] for row in rows],
     )
 

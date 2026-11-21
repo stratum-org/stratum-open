@@ -21,8 +21,9 @@ other Clippy lint is switched off, the style ones above all.
 into a build failure. With a `Cargo.lock` it runs `--locked`, so it never
 rewrites one; without, cargo writes one as it builds, and it's removed after.
 
-It hasn't been measured on merged PRs yet: building each project of the
-benchmark's corpus takes minutes (benchmark/README.md).
+On 59 merged PRs of six Rust projects, each built at its head
+(benchmark/results/2026-11-21-build-checks-actions-cpu), the `correctness`
+and `suspicious` lints reported nothing on the 2,839 lines they add.
 """
 
 from __future__ import annotations

@@ -1,0 +1,486 @@
+[
+ {
+  "repo": "tokio-rs/axum",
+  "pr": 3994,
+  "head": "a57a95d39016a7b0bb2aafa4b1835c19e1491c3e",
+  "order": 0,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 2
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 12
+  },
+  "seconds": {
+   "Clippy": 5.2
+  },
+  "programs": {
+   "Clippy": 5.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "axum-extra",
+    "code": 0,
+    "stderr": "warning: `package.homepage` is redundant with `package.repository`",
+    "seconds": 5.2,
+    "timed_out": false,
+    "built": 25,
+    "compiled": 25
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89319.9,
+   "clone_mb": 5.7,
+   "target_mb": 74.8
+  }
+ },
+ {
+  "repo": "tokio-rs/axum",
+  "pr": 3991,
+  "head": "1696a72eea1480454da0318decd51c3a13610a45",
+  "order": 1,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 47
+  },
+  "seconds": {
+   "Clippy": 0.1
+  },
+  "programs": {
+   "Clippy": 0.1
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "axum-extra",
+    "code": 0,
+    "stderr": "warning: `package.homepage` is redundant with `package.repository`",
+    "seconds": 0.1,
+    "timed_out": false,
+    "built": 25,
+    "compiled": 0
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89319.9,
+   "clone_mb": 5.7,
+   "target_mb": 74.8
+  }
+ },
+ {
+  "repo": "tokio-rs/axum",
+  "pr": 3990,
+  "head": "d3363a83fc37ea7f3da1bb5d078caed7894885cc",
+  "order": 2,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 3
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 38
+  },
+  "seconds": {
+   "Clippy": 0.1
+  },
+  "programs": {
+   "Clippy": 0.1
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "axum-extra",
+    "code": 0,
+    "stderr": "warning: `package.homepage` is redundant with `package.repository`",
+    "seconds": 0.1,
+    "timed_out": false,
+    "built": 25,
+    "compiled": 0
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89319.8,
+   "clone_mb": 5.7,
+   "target_mb": 74.8
+  }
+ },
+ {
+  "repo": "tokio-rs/axum",
+  "pr": 3984,
+  "head": "857f19085b8dccdd87af9378e5dda063193205e2",
+  "order": 3,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 2
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 34
+  },
+  "seconds": {
+   "Clippy": 5.4
+  },
+  "programs": {
+   "Clippy": 5.4
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "axum",
+    "code": 0,
+    "stderr": "warning: `package.homepage` is redundant with `package.repository`",
+    "seconds": 5.4,
+    "timed_out": false,
+    "built": 48,
+    "compiled": 28
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89236.8,
+   "clone_mb": 5.7,
+   "target_mb": 161.8
+  }
+ },
+ {
+  "repo": "tokio-rs/axum",
+  "pr": 3982,
+  "head": "a794ccf9f4e3fccaca4d86b6edbc3d27876e4db4",
+  "order": 4,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 3
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 20
+  },
+  "seconds": {
+   "Clippy": 0.8
+  },
+  "programs": {
+   "Clippy": 0.8
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "axum-extra",
+    "code": 0,
+    "stderr": "warning: `package.homepage` is redundant with `package.repository`",
+    "seconds": 0.1,
+    "timed_out": false,
+    "built": 25,
+    "compiled": 0
+   },
+   {
+    "program": "Clippy",
+    "folder": "axum",
+    "code": 0,
+    "stderr": "warning: `package.homepage` is redundant with `package.repository`",
+    "seconds": 0.7,
+    "timed_out": false,
+    "built": 48,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89236.8,
+   "clone_mb": 5.7,
+   "target_mb": 161.8
+  }
+ },
+ {
+  "repo": "tokio-rs/axum",
+  "pr": 3978,
+  "head": "7834e59c40fa402cb5cb71be7de0108f87f01b7f",
+  "order": 5,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 15
+  },
+  "seconds": {
+   "Clippy": 0.2
+  },
+  "programs": {
+   "Clippy": 0.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "axum-extra",
+    "code": 0,
+    "stderr": "warning: `package.homepage` is redundant with `package.repository`",
+    "seconds": 0.2,
+    "timed_out": false,
+    "built": 25,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89236.8,
+   "clone_mb": 5.7,
+   "target_mb": 161.8
+  }
+ },
+ {
+  "repo": "tokio-rs/axum",
+  "pr": 3968,
+  "head": "d4e380b6278fc28ddc2eeea6d6ac69b6ee42b4fc",
+  "order": 6,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 41
+  },
+  "seconds": {
+   "Clippy": 0.4
+  },
+  "programs": {
+   "Clippy": 0.4
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "axum-extra",
+    "code": 0,
+    "stderr": "warning: `package.homepage` is redundant with `package.repository`",
+    "seconds": 0.4,
+    "timed_out": false,
+    "built": 25,
+    "compiled": 0
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89221.6,
+   "clone_mb": 5.8,
+   "target_mb": 161.8
+  }
+ },
+ {
+  "repo": "tokio-rs/axum",
+  "pr": 3963,
+  "head": "f9152169b1deb3d9bf9964979a81ce915fe3010c",
+  "order": 7,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 9
+  },
+  "seconds": {
+   "Clippy": 7.3
+  },
+  "programs": {
+   "Clippy": 7.3
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "axum-macros",
+    "code": 1,
+    "stderr": "info: syncing channel updates for nightly-2026-05-04-x86_64-unknown-linux-gnu",
+    "seconds": 7.3,
+    "timed_out": false,
+    "built": 0,
+    "compiled": 0
+   }
+  ],
+  "notes": [
+   "Clippy couldn't build the crate in `axum-macros` (`info: syncing channel updates for nightly-2026-05-04-x86_64-unknown-linux-gnu`), so its findings there are missing."
+  ],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88606.7,
+   "clone_mb": 5.8,
+   "target_mb": 161.8
+  }
+ },
+ {
+  "repo": "tokio-rs/axum",
+  "pr": 3936,
+  "head": "8662ab15f6318e884f06122c41b5e2bb3f7719d9",
+  "order": 8,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 2
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 105
+  },
+  "seconds": {
+   "Clippy": 4.7
+  },
+  "programs": {
+   "Clippy": 4.7
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "axum",
+    "code": 0,
+    "stderr": "warning: `package.homepage` is redundant with `package.repository`",
+    "seconds": 4.7,
+    "timed_out": false,
+    "built": 48,
+    "compiled": 10
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88550.9,
+   "clone_mb": 5.9,
+   "target_mb": 222.7
+  }
+ },
+ {
+  "repo": "tokio-rs/axum",
+  "pr": 3935,
+  "head": "f794b605e938551720476278f922222c025fcdf3",
+  "order": 9,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 2
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 2
+  },
+  "seconds": {
+   "Clippy": 1.1
+  },
+  "programs": {
+   "Clippy": 1.0
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "axum",
+    "code": 0,
+    "stderr": "warning: `package.homepage` is redundant with `package.repository`",
+    "seconds": 0.9,
+    "timed_out": false,
+    "built": 48,
+    "compiled": 2
+   },
+   {
+    "program": "Clippy",
+    "folder": "axum-macros",
+    "code": 1,
+    "stderr": "error: 'cargo-clippy' is not installed for the toolchain 'nightly-2026-05-04-x86_64-unknown-linux-gnu'.",
+    "seconds": 0.1,
+    "timed_out": false,
+    "built": 0,
+    "compiled": 0
+   }
+  ],
+  "notes": [
+   "Clippy couldn't build the crate in `axum-macros` (`error: 'cargo-clippy' is not installed for the toolchain 'nightly-2026-05-04-x86_64-unknown-linux-gnu'.`), so its findings there are missing."
+  ],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88550.8,
+   "clone_mb": 5.9,
+   "target_mb": 222.8
+  }
+ }
+]

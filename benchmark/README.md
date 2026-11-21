@@ -141,9 +141,17 @@ disk space it used. staticcheck is asked for every SA check and Clippy for its `
 so what the checks leave out is measured from the same build. The first PR of each project is built with nothing
 cached, as on a fresh runner; the others reuse what the PRs before them downloaded and built. Building a project runs its
 code, so start the **Build-check benchmark** workflow: it runs on GitHub's runners, one job per project, and builds inside
-a container made from [Dockerfile](Dockerfile), away from the runner and its credentials. It hasn't been run yet. Until it has, their README entries say they're unmeasured, and what they keep is the tools' own
-correctness rules: every go vet analyzer but `composites` and `tests`, staticcheck's SA checks but SA1019 and SA5009, and
-Clippy's `correctness` group.
+a container made from [Dockerfile](Dockerfile), away from the runner and its credentials.
+
+On the 21 Nov run ([2026-11-21-build-checks-actions-cpu](results/2026-11-21-build-checks-actions-cpu/notes.md)), 119 of the PRs
+were built (one is gone from GitHub):
+- **What the checks reported:** nothing on the 987 lines 60 Go PRs add, or on the 2,839 lines 59 Rust PRs add.
+- **What the programs reported, kept or not:** one issue in all, staticcheck's SA1019 (a deprecated name) on a Prometheus PR. It's true but harmless, and it's the reason SA1019 is left out.
+- **Build time:** a project's first PR, with nothing cached, took 22 to 62 s for Go and 2 to 119 s for Rust. The rest took a median of 1 to 14 s, and none came near the checks' time limits.
+
+So what the checks keep is unchanged: every go vet analyzer but `composites` and `tests`, staticcheck's SA checks but SA1019 and
+SA5009, and Clippy's `correctness` group. None of their rules fired, so their noise is measured only as none on these lines, and
+what they'd catch only by the tests.
 
 ```sh
 python benchmark/build_checks.py fetch   # the PRs' diffs, the one step that needs a GitHub token
@@ -224,6 +232,7 @@ after adding or marking a run, run `python benchmark/results_page.py`.
 | [2026-11-13-logic-pass-actions-cpu](results/2026-11-13-logic-pass-actions-cpu/summary.md) | GitHub runner, 4 CPUs, no GPU | `gpt-oss:20b` with `review.logic_pass` and `review.context_lines: 10`: 27 of 39 found against 18 without them, 15 comments on 39 clean PRs against 8, about three times as long per PR ([notes](results/2026-11-13-logic-pass-actions-cpu/notes.md)) |
 | [2026-11-14-qwen3-coder-moe-actions-cpu](results/2026-11-14-qwen3-coder-moe-actions-cpu/summary.md) | GitHub runner, 4 CPUs, no GPU | `Qwen3-Coder-30B-A3B` at 2 and 3 bits on the 19 dev cases: 1 and 0 found with `review.verify: strict` against 8 and 9 for `gpt-oss:20b`; 9 without verify, but with 42 comments on 19 clean PRs ([notes](results/2026-11-14-qwen3-coder-moe-actions-cpu/notes.md)) |
 | [2026-11-14-shell-checks](results/2026-11-14-shell-checks/summary.md) | Any (no model) | `checks.shellcheck` and `checks.actionlint` (off by default): nothing on the lines 65 and 129 merged PRs add to scripts and workflows. On those files read as new, 1 false alarm from ShellCheck in 23,997 lines; 21 findings from actionlint in 24,353, 9 right but harmless and 11 false alarms, each something GitHub added after actionlint 1.7.12 |
+| [2026-11-21-build-checks-actions-cpu](results/2026-11-21-build-checks-actions-cpu/summary.md) | GitHub runner, 4 CPUs, no GPU, in a container | `checks.go_vet` and `checks.clippy` (off by default) on 119 PRs built at their head: nothing on the 987 lines 60 Go PRs add or on the 2,839 lines 59 Rust PRs add. Of everything the programs reported, kept or not, one issue: SA1019 on a deprecated name, true but harmless. A first build with nothing cached took 22 to 62 s for Go and 2 to 119 s for Rust ([notes](results/2026-11-21-build-checks-actions-cpu/notes.md)) |
 
 One folder holds no run of its own: [2026-11-13-quiet](results/2026-11-13-quiet/summary.md) tries the patterns `review.quiet` uses
 on the findings the runs above left and people marked. They leave out 41 of the 215 marked wrong and none of the 220 marked right

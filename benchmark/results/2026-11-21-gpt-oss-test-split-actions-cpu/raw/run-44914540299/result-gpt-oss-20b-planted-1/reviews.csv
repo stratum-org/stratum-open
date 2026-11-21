@@ -1,0 +1,6 @@
+case,set,kind,path,line,model,variant,version,seconds,shown,calls,failed_calls,findings,near,error
+pallets/flask#5917,test,negated-condition,src/flask/sansio/app.py,641,gpt-oss:20b,logic-context10-verify-strict,planted,645.5,yes,5,0,1,1,
+encode/httpx#3690,test,negated-condition,src/httpx/_server.py,35,gpt-oss:20b,logic-context10-verify-strict,planted,357.2,yes,1,1,0,0,the reply wasn't the JSON asked for
+pydantic/pydantic#14213,test,flipped-comparison,pydantic/plugin/_loader.py,43,gpt-oss:20b,logic-context10-verify-strict,planted,580.9,yes,3,0,1,1,
+Textualize/textual#6455,test,wrong-boolean,src/textual/screen.py,2028,gpt-oss:20b,logic-context10-verify-strict,planted,384.6,yes,3,0,1,1,
+Textualize/rich#3953,test,off-by-one,rich/cells.py,58,gpt-oss:20b,logic-context10-verify-strict,planted,350.9,yes,3,0,1,0,

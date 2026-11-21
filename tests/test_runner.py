@@ -1219,8 +1219,10 @@ def test_the_summary_says_what_was_set_for_gpt_oss_and_why(gh):
     review_pull(context(gh, FakeModel(model_answer(), name="gpt-oss:20b")), 7)
     body = gh.issue_comments_[7][0]["body"]
     assert ("Set for `gpt-oss:20b`, since the policy file doesn't set them: `review.reasoning: low` (without it, the thinking uses up "
-            "the output budget and most replies come back empty) and `review.verify: strict` (it halves the wrong comments and "
-            "costs no real catches).") in body
+            "the output budget and most replies come back empty); `review.verify: strict` (it halves the wrong comments and "
+            "costs no real catches); `review.logic_pass: true` (with ten lines of context it found 27 of 39 planted bugs against 18, "
+            "though a review takes about three times as long); `review.context_lines: 10` (the logic pass finds more with the code "
+            "around each change, and either alone finds only one or two more).") in body
 
 
 def test_the_summary_says_nothing_of_model_settings_for_other_models(gh):

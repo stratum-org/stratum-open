@@ -1,3 +1,5 @@
 # Ten unchanged lines of code shown around each hunk, from the file.
+# logic_pass and context_lines are pinned, so the variant keeps its meaning now that gpt-oss gets both by default.
 review:
   context_lines: 10
+  logic_pass: false

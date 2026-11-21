@@ -1,0 +1,6 @@
+case,set,kind,path,line,model,variant,version,seconds,shown,calls,failed_calls,findings,near,error
+pallets/flask#5700,test,negated-condition,src/flask/__init__.py,45,gpt-oss:20b,reasoning-low-verify-strict,clean,102.8,yes,1,0,0,0,
+pallets/jinja#2098,test,flipped-comparison,src/jinja2/__init__.py,44,gpt-oss:20b,reasoning-low-verify-strict,clean,132.4,yes,2,0,1,0,
+pydantic/pydantic#14195,test,flipped-comparison,pydantic/_internal/_typing_extra.py,279,gpt-oss:20b,reasoning-low-verify-strict,clean,44.6,yes,1,0,0,0,
+scrapy/scrapy#8464,test,wrong-boolean,scrapy/core/_http2/stream.py,469,gpt-oss:20b,reasoning-low-verify-strict,clean,154.0,yes,1,0,0,0,
+pallets/click#3777,test,inverted-return,src/click/_termui_impl.py,543,gpt-oss:20b,reasoning-low-verify-strict,clean,350.7,yes,2,0,1,0,

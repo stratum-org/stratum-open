@@ -195,11 +195,26 @@ def _without_verify(variant):
     return re.sub(r"-?verify(-\w+)?$", "", variant)
 
 
+def _variant(settings):
+    """The variant a row's settings name: the policy file in
+    benchmark/planted/variants/ that sets exactly those (`review.logic_pass:
+    true` and the three others the example sets are logic-context10-verify-strict),
+    else their names joined the way the runs name them (`review.reasoning: low`
+    and `review.verify: strict` is reasoning-low-verify-strict). No setting is
+    the plain run."""
+    import yaml
+
+    wanted = {key: value.lower() for key, value in settings.items()}
+    for path in sorted((ROOT / "benchmark" / "planted" / "variants").glob("*.yml")):
+        review = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("review") or {}
+        if wanted and {key: str(value).lower() for key, value in review.items()} == wanted:
+            return path.stem
+    return "-".join(f"{key}-{value}" for key, value in settings.items())
+
+
 def models_table_problems(text, page):
     """The README's Models table, row by row, against the runs of that model
-    with those settings. A row's settings name its variant the way the runs
-    do: `review.reasoning: low` and `review.verify: strict` is
-    reasoning-low-verify-strict, and no setting is the plain run."""
+    with those settings. A row's settings name its variant (`_variant`)."""
     if "\n## Models\n" not in text:
         return ["README.md has no \"## Models\" section, where tests/test_results_page.py looks for the benchmark's figures."]
     section = text.split("\n## Models\n", 1)[1].split("\n## ", 1)[0]
@@ -215,7 +230,7 @@ def models_table_problems(text, page):
             problems.append(f"README.md's Models table: the row \"{cells[0]}\" names no model in backticks.")
             continue
         model = named[1]
-        variant = "-".join(f"{key}-{value}" for key, value in re.findall(r"`review\.(\w+): (\w+)`", row["Policy setting"]))
+        variant = _variant(dict(re.findall(r"`review\.(\w+): (\w+)`", row["Policy setting"])))
         where = f"README.md's Models table, `{model}`" + (f" with {variant}" if variant else "")
         runs = [run for run in page["models"] if (run["model"], run["variant"]) == (model, variant)]
         if not runs:
@@ -369,6 +384,14 @@ RUNS = """| Run | Machine | Models |
 | [first](results/first/summary.md) | GitHub runner, 4 CPUs | Planted bugs found: `small` 7B 1, of 39 |
 | [third](results/third/summary.md) | GitHub runner, 4 CPUs | `big:20b` with each `verify`: 16 of 39 found with strict verify, 7 comments on 39 clean PRs |
 """
+
+
+def test_a_rows_settings_name_the_variant_file_that_sets_exactly_them():
+    assert _variant({}) == ""
+    assert _variant({"reasoning": "low", "verify": "strict"}) == "reasoning-low-verify-strict"
+    assert _variant({"reasoning": "low", "verify": "strict", "logic_pass": "true", "context_lines": "10"}) == "logic-context10-verify-strict"
+    assert _variant({"reasoning": "low", "verify": "strict", "logic_pass": "false", "context_lines": "0"}) == "reasoning-low-verify-strict"
+    assert _variant({"verify": "strict", "samples": "2"}) == "verify-strict-samples-2"  # no file sets just those
 
 
 def test_the_checks_pass_a_readme_that_agrees_with_the_results():

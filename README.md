@@ -23,7 +23,7 @@ spend your review time on the ones worth it. It runs on open models of 7 to
 20B parameters on hardware you control, GitHub's own runner included, and
 your rules live in a file in your own repo. No telemetry, no license check.
 
-- **It finds bugs, and it shows its numbers.** Of 39 real PRs, each with one bug planted, the example workflow found 16 on GitHub's free runner, and 27 with [two more settings](#a-more-thorough-review) that make it slower. Every figure is on the [results page](benchmark/RESULTS.md), with its 95% interval and the comments made on the same PRs without the bug.
+- **It finds bugs, and it shows its numbers.** Of 39 real PRs, each with one bug planted, the example workflow found 27 on GitHub's free runner on 13 Nov, at about 11.5 minutes a PR: the 19 its settings were chosen on and the 20 kept back. Run again on 21 Nov on the 20 kept back, it found 14 of 20, against 5 of 20 with [two settings turned off](#a-faster-review) that make it about three times as fast. Every figure is on the [results page](benchmark/RESULTS.md), with its 95% interval and the comments made on the same PRs without the bug.
 - **Checks that need no model** catch secrets, risky workflow changes, and packages that don't exist: a typo, or a name an AI invented that someone could register. Together they caught 98 of 99 planted risks, with no false alarms on 184 merged Python PRs.
 - **One triage label per PR**, with its reasons, and a queue of every open PR, cheapest to review first.
 
@@ -50,7 +50,7 @@ Or, with nothing to run on your machine: copy [examples/try-stratum.yml](example
 
 Copy [examples/stratum.yml](examples/stratum.yml) to `.github/workflows/stratum.yml`. That's all.
 
-That workflow runs `gpt-oss:20b` with Ollama on GitHub's own runner, so you need no server. On the [planted-bug benchmark](benchmark/README.md) it found 16 of 39 bugs, against 1 of 39 for `qwen2.5-coder:7b` ([Models](#models) has the numbers). GitHub's free runners have no GPU, though, so a review takes a few minutes: about 3.5 minutes a PR, plus a couple more to download the model. At 13.8 GB it's bigger than a repository's 10 GB Actions cache, so it's downloaded each run; Ollama itself goes into the cache on the first scheduled (or manual) run, and PR runs read it, since GitHub doesn't let them write caches. For the fastest run, set `ollama-model: qwen2.5-coder:7b`, which stays in the cache, though it finds far less. If your project has a machine with a GPU, run Ollama (or any OpenAI-compatible server) there instead. Then point `review.endpoint` in your policy file at it, and drop `ollama-model` from the workflow.
+That workflow runs `gpt-oss:20b` with Ollama on GitHub's own runner, so you need no server. On the [planted-bug benchmark](benchmark/README.md) it found 27 of 39 bugs, against 1 of 39 for `qwen2.5-coder:7b`, and 14 of 20 when the 20 cases kept back from tuning were run again ([Models](#models) has the numbers and the runs they come from). GitHub's free runners have no GPU, though, so a review takes a while: about 11.5 minutes a PR, plus a couple more to download the model. For a review about three times as fast that finds fewer bugs, see [a faster review](#a-faster-review). At 13.8 GB it's bigger than a repository's 10 GB Actions cache, so it's downloaded each run; Ollama itself goes into the cache on the first scheduled (or manual) run, and PR runs read it, since GitHub doesn't let them write caches. For the fastest run, set `ollama-model: qwen2.5-coder:7b`, which stays in the cache, though it finds far less. If your project has a machine with a GPU, run Ollama (or any OpenAI-compatible server) there instead. Then point `review.endpoint` in your policy file at it, and drop `ollama-model` from the workflow.
 
 To hear from Stratum sooner, set `review.early_checks: true` in your policy file. The Action then runs the checks before it starts the model and posts what they found straight away: on the lines, in the summary comment (with a line saying the model's review is still running), and as a check run in progress. That's usually within a minute of the job starting, since the checks need no model. When the model is done, the same comment becomes the full review and the check run gets its result. The end result is the same as without the setting. A check's early comment that the full review wouldn't have posted is deleted then: when the model reported the same problem on the same lines, or when `review.max_inline_comments` gives its place to a more serious finding. One that someone has replied to stays. If the model's review never finishes (Ollama doesn't start, or the job fails, times out or is cancelled), the summary says so, and the check run is completed with what the checks found.
 
@@ -360,36 +360,44 @@ On GitHub's free runner (4 CPUs, 16 GB RAM, no GPU) you can choose between two m
 | `ollama-model` | Policy setting | Bugs found | Wrong comments per clean PR | Time per PR | Download |
 | --- | --- | --- | --- | --- | --- |
 | `qwen2.5-coder:7b` | | 1 of 39 | about 0.4 | about 2.5 min | 4.7 GB, kept in the Actions cache |
-| `gpt-oss:20b` (the example's) | `review.reasoning: low` and `review.verify: strict`, set for it automatically | 16 of 39 (12 to 18 over four runs) | about 0.2 | about 3.5 min | 13.8 GB, downloaded each run |
+| `gpt-oss:20b` (the example's) | `review.reasoning: low`, `review.verify: strict`, `review.logic_pass: true` and `review.context_lines: 10`, set for it automatically | 27 of 39 | about 0.4 | about 11.5 min | 13.8 GB, downloaded each run |
+| `gpt-oss:20b`, [faster](#a-faster-review) | `review.reasoning: low` and `review.verify: strict` set for it, with `review.logic_pass: false` and `review.context_lines: 0` in the policy file | 16 of 39 (12 to 18 over four runs) | about 0.2 | about 3.5 min | 13.8 GB, downloaded each run |
 
-`gpt-oss:20b` finds far more, at about the same speed and with fewer wrong comments. With the logic pass and ten lines of code around each change it finds more again, for about three times the wait ([a more thorough review](#a-more-thorough-review)). Two costs of `gpt-oss:20b` either way:
+Where the figures come from:
+- **The 7B:** [2026-11-07-planted-actions-cpu](benchmark/results/2026-11-07-planted-actions-cpu/summary.md).
+- **`gpt-oss:20b`, the example's:** [2026-11-13-logic-pass-actions-cpu](benchmark/results/2026-11-13-logic-pass-actions-cpu/notes.md), on all 39 cases: the 19 its settings were chosen on, and the 20 kept back.
+- **`gpt-oss:20b`, faster:** [2026-11-08-gpt-oss-actions-cpu](benchmark/results/2026-11-08-gpt-oss-actions-cpu/summary.md), and the range over it and three other runs on all 39.
+- **The 20 kept-back cases alone,** run again on 21 Nov ([2026-11-21-gpt-oss-test-split-actions-cpu](benchmark/results/2026-11-21-gpt-oss-test-split-actions-cpu/notes.md)): the example's settings found 14 of 20 and the faster review 5 of 20, with a median of about 11.5 and 3.3 minutes a review.
+
+`gpt-oss:20b` finds far more than the 7B. The logic pass and the ten lines of code around each change are what make it slow: they find about half as many bugs again, including inverted `return`s and off-by-ones the plain review never caught, for about three times the wait. Two costs of `gpt-oss:20b` either way:
 - **Disk:** it doesn't fit the runner's disk as it comes, so the Action removes preinstalled SDKs it doesn't need to make room.
 - **Cache:** it's bigger than a repository's 10 GB Actions cache, so it's downloaded each run, which adds a couple of minutes. Ollama itself is still cached.
 
-Stratum sets two things for `gpt-oss` itself, so to switch models you only change `ollama-model`:
+Stratum sets four things for `gpt-oss` itself, so to switch models you only change `ollama-model`:
 - `review.reasoning: low`: it's a thinking model, and without it the thinking uses up the output budget and most replies come back empty;
-- `review.verify: strict`: it costs `gpt-oss` no real catches and halves its wrong comments. On the 7B, by contrast, it removes noise only because there were no real catches to lose.
+- `review.verify: strict`: it costs `gpt-oss` no real catches and halves its wrong comments. On the 7B, by contrast, it removes noise only because there were no real catches to lose;
+- `review.logic_pass: true` and `review.context_lines: 10`: one more call per chunk that looks only for logic errors, with the unchanged code around each change. They only help together: each on its own found one or two more.
 
-Your policy file's own value for either wins, and each review's summary says which were set for the model.
+Your policy file's own value for any of them wins, and each review's summary says which were set for the model.
 
 The same review can catch different bugs from one run to the next, so expect the counts to move by a few.
 
-### A more thorough review
+### A faster review
 
-If you'd rather wait longer for more catches, turn on the logic pass and show the model ten lines of code around each change. In `.stratum/policy.yml`, with `ollama-model: gpt-oss:20b`:
+The logic pass and the ten lines of context cost time:
+
+- **Time:** a review takes about three times as long, a median of about 11.5 minutes a PR on the free runner instead of about 3.5. A large PR can take most of an hour: the slowest measured took 43 minutes. The example workflow stops a job at 90 minutes, and a job stopped there posts no model review (with `review.early_checks: true`, the checks' findings are already posted).
+- **Comments on code with nothing wrong:** about 0.4 a PR, against 0.2.
+
+If your maintainers would rather have the review sooner, turn both off in `.stratum/policy.yml`:
 
 ```yaml
 review:
-  logic_pass: true      # one more call per chunk, for logic errors only
-  context_lines: 10     # unchanged lines shown around each change
+  logic_pass: false     # no extra call per chunk for logic errors
+  context_lines: 0      # only the changed lines, as the small profile shows them
 ```
 
-On the planted-bug benchmark this found 27 of 39 bugs, against 18 for the same model without the two settings, including inverted `return`s and off-by-ones the plain review never caught. What it costs:
-
-- **Time:** a review takes about three times as long, a median of about 11 minutes a PR on the free runner, and a large PR can take most of an hour.
-- **Comments on code with nothing wrong:** about 0.4 a PR, against 0.2.
-
-The two settings only help together: each on its own found one or two more. Neither is on by default, because of the wait. [How it was measured](benchmark/results/2026-11-13-logic-pass-actions-cpu/notes.md).
+They were measured on the planted bugs, and again on 20 cases kept back until the settings were chosen ([how it was measured](benchmark/results/2026-11-21-gpt-oss-test-split-actions-cpu/notes.md)).
 
 How much a review asks of the model depends on the model. `review.profile: auto` asks the model's server for its size:
 - **`small`**, for models up to about 20B: a compact diff, 1–3 model calls.

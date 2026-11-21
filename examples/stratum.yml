@@ -59,7 +59,10 @@ jobs:
     concurrency:
       group: stratum-${{ github.event_name == 'pull_request_target' && format('review-{0}', github.event.pull_request.number) || github.event.comment.id && format('comment-{0}', github.event.comment.id) || github.run_id }}
       cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
-    timeout-minutes: 60
+    # gpt-oss:20b's review takes a median of about 11.5 minutes a PR on the free runner, and
+    # took up to 43 on the benchmark, plus a couple of minutes to download the model. A job
+    # stopped at this limit posts no model review, so it leaves room for a larger PR than that.
+    timeout-minutes: 90
     steps:
       # The default branch, with history for track records, ownership and hotspots.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -72,10 +75,12 @@ jobs:
       - uses: stratum-org/stratum-open@v0.3.0
         with:
           # Runs the model on the runner: no server needed, but slow on CPU.
-          # gpt-oss:20b found 16 of 39 planted bugs on this runner, against 1 of 39 for
-          # qwen2.5-coder:7b, with about 0.2 wrong comments per clean PR against 0.4, in
-          # about 3.5 min a PR against 2.5. Stratum sets review.reasoning: low and
-          # review.verify: strict for it unless .stratum/policy.yml sets them.
+          # gpt-oss:20b found 27 of 39 planted bugs on this runner, against 1 of 39 for
+          # qwen2.5-coder:7b, with about 0.4 wrong comments per clean PR for both, in
+          # about 11.5 min a PR against 2.5. Stratum sets review.reasoning: low,
+          # review.verify: strict, review.logic_pass: true and review.context_lines: 10
+          # for it unless .stratum/policy.yml sets them. With the last two set to false
+          # and 0 there, it found 16 of 39 in about 3.5 min a PR.
           # At 13.8 GB it's too big for the Actions cache, so it's downloaded each run
           # (a couple of minutes more), and the action frees disk space for it.
           # For the fastest run, use qwen2.5-coder:7b, which stays in the cache.

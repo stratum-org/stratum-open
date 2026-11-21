@@ -1,0 +1,2 @@
+case,model,variant,version,severity,category,path,line,near,title,detail,verdict,note
+pallets/click#3858,gpt-oss:20b,reasoning-low-verify-strict,planted,medium,bug,src/click/types.py,1151,yes,Incorrect type conversion order,"The logic incorrectly checks `path_type is not str` before checking for `bytes`, causing a `bytes` target to be decoded instead of encoded. It also incorrectly handles `PathLike` types, attempting to decode them instead of converting via `path_type(value)`.",right,Names the planted `is not str` branch and what it does to bytes.

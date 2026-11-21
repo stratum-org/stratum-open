@@ -1,0 +1,6 @@
+case,set,kind,path,line,model,variant,version,seconds,shown,calls,failed_calls,findings,near,error
+pallets/werkzeug#3339,test,negated-condition,src/werkzeug/exceptions.py,48,gpt-oss:20b,logic-context10-verify-strict,clean,998.3,yes,7,0,1,0,
+psf/requests#7427,test,flipped-comparison,src/requests/utils.py,855,gpt-oss:20b,logic-context10-verify-strict,clean,303.1,yes,3,0,0,0,
+Textualize/textual#6542,test,wrong-boolean,src/textual/_xterm_parser.py,356,gpt-oss:20b,logic-context10-verify-strict,clean,771.2,yes,5,0,1,0,
+scrapy/scrapy#8413,test,missing-await,scrapy/pipelines/media.py,171,gpt-oss:20b,logic-context10-verify-strict,clean,447.5,yes,3,0,1,0,
+Textualize/textual#6405,test,missing-await,src/textual/widgets/_directory_tree.py,537,gpt-oss:20b,logic-context10-verify-strict,clean,436.1,yes,2,0,0,0,

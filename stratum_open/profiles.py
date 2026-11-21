@@ -11,8 +11,9 @@ its size where it's known (from the server, or the "7b" in its name), else its
 context window, else whether it runs locally.
 
 Whatever the profile, a model family can need settings of its own
-(`MODEL_SETTINGS`): gpt-oss gets `review.reasoning: low` and
-`review.verify: strict`, again unless the policy file set them.
+(`MODEL_SETTINGS`): gpt-oss gets `review.reasoning: low`,
+`review.verify: strict`, `review.logic_pass: true` and
+`review.context_lines: 10`, again unless the policy file set them.
 """
 
 from __future__ import annotations
@@ -58,13 +59,21 @@ PRESETS: dict[str, dict[str, Any]] = {
 
 # Settings one model family needs whatever the profile, unless the policy file
 # set them: the pattern its name matches, then each key's value and why. On the
-# free runner gpt-oss:20b found 16 of 39 planted bugs with both
-# (benchmark/results/2026-11-08-gpt-oss-actions-cpu).
+# free runner gpt-oss:20b found 16 of 39 planted bugs with the first two
+# (benchmark/results/2026-11-08-gpt-oss-actions-cpu). With the logic pass and
+# ten lines of context as well, it found 27 of 39 against 18 for the first two
+# alone (2026-11-13-logic-pass-actions-cpu). On the 20 cases kept back from
+# tuning, they found 13 against 9 that day, and 14 against 5 when run again on
+# 21 Nov (2026-11-21-gpt-oss-test-split-actions-cpu). Either one alone found one
+# or two more. The cost is the wait: a median of about 11.5 minutes a PR on the
+# free runner instead of about 3.5, and up to 43 minutes on a large PR.
 MODEL_SETTINGS: tuple[tuple[re.Pattern[str], dict[str, tuple[Any, str]]], ...] = (
     # Ollama's names for it: gpt-oss, gpt-oss:20b, library/gpt-oss:120b.
     (re.compile(r"(?:^|/)gpt-oss(?::|$)", re.IGNORECASE), {
         "review.reasoning": ("low", "without it, the thinking uses up the output budget and most replies come back empty"),
         "review.verify": ("strict", "it halves the wrong comments and costs no real catches"),
+        "review.logic_pass": (True, "with ten lines of context it found 27 of 39 planted bugs against 18, though a review takes about three times as long"),
+        "review.context_lines": (10, "the logic pass finds more with the code around each change, and either alone finds only one or two more"),
     }),
 )
 
@@ -126,10 +135,13 @@ def model_settings_line(name: str, applied: dict[str, Any]) -> str:
     """What `for_model` filled in and why, for the review's summary; empty
     when it filled in nothing."""
     reasons = {key: why for pattern, settings in MODEL_SETTINGS if pattern.search(name or "") for key, (_, why) in settings.items()}
-    parts = [f"`{key}: {value}` ({reasons[key]})" for key, value in applied.items()]
+    # Written as the policy file would have it: `review.logic_pass: true`, not True.
+    parts = [f"`{key}: {str(value).lower() if isinstance(value, bool) else value}` ({reasons[key]})" for key, value in applied.items()]
     if not parts:
         return ""
-    return f"Set for `{name}`, since the policy file doesn't set {'them' if len(parts) > 1 else 'it'}: " + " and ".join(parts) + "."
+    # The reasons have commas of their own, so three or more are kept apart with semicolons.
+    joined = " and ".join(parts) if len(parts) < 3 else "; ".join(parts)
+    return f"Set for `{name}`, since the policy file doesn't set {'them' if len(parts) > 1 else 'it'}: " + joined + "."
 
 
 def _set(obj: Any, path: list[str], value: Any) -> Any:

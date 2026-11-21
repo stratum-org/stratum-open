@@ -1,0 +1,2 @@
+case,model,variant,version,severity,category,path,line,near,title,detail,verdict,note
+pallets/werkzeug#3270,gpt-oss:20b,reasoning-low-verify-strict,clean,high,bug,src/werkzeug/http.py,1022,,ContentRange parsing always fails,"ds.ContentRange.from_header never returns None; it always returns a ContentRange instance. The check `if not (obj := ...)` therefore treats every header as invalid and returns None, breaking all range parsing.",wrong,"`ContentRange` defines `__bool__`, false when neither a range nor a length is set, so the check works."

@@ -1,4 +1,7 @@
 # A thinking model with less thinking, and the lenient verify pass.
+# logic_pass and context_lines are pinned, so the variant keeps its meaning now that gpt-oss gets both by default.
 review:
   reasoning: low
   verify: lenient
+  logic_pass: false
+  context_lines: 0

@@ -55,7 +55,10 @@ jobs:
     concurrency:
       group: stratum-${{ github.event_name == 'pull_request_target' && format('review-{0}', github.event.pull_request.number) || github.event.comment.id && format('comment-{0}', github.event.comment.id) || github.run_id }}
       cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
-    timeout-minutes: 60
+    # gpt-oss:20b's review takes a median of about 11.5 minutes a PR on the free runner, and
+    # took up to 43 on the benchmark, plus a couple of minutes to download the model. A job
+    # stopped at this limit posts no model review, so it leaves room for a larger PR than that.
+    timeout-minutes: 90
     steps:
       # The default branch, with history for track records, ownership and hotspots.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,7 +70,7 @@ jobs:
       - uses: ./
         with:
           # Runs the model on the runner: no server needed, but slow on CPU.
-          # The model examples/stratum.yml recommends: about 3.5 min a PR, plus a
+          # The model examples/stratum.yml recommends: about 11.5 min a PR, plus a
           # couple of minutes to download it, since it's too big for the Actions cache.
           # To use your own server instead, remove this line and set
           # review.endpoint in .stratum/policy.yml (or model-endpoint here).

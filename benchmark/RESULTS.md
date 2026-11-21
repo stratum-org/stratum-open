@@ -36,15 +36,17 @@ Real merged PRs, each with one bug planted on a line it adds. Where a run has th
 | `qwen3:14b` | reasoning-off | [2026-11-08-cache-fit-actions-cpu](results/2026-11-08-cache-fit-actions-cpu/) | 19 (dev) | 4 of 19 | 8.5% to 43% | 6 of 19 | 27 on 19 | 1.42 | 6 of 42 | 476s | 29 | 1 |
 | `deepseek-coder-v2:16b` | - | [2026-11-08-moe-actions-cpu](results/2026-11-08-moe-actions-cpu/) | 39 | 4 of 39 | 4.1% to 24% | 12 of 39 | 90 on 39 | 2.31 | 0 of 86 | 143s | 78 | 1 |
 | `gpt-oss:20b` | - | [2026-11-08-moe-actions-cpu](results/2026-11-08-moe-actions-cpu/) | 39 | 9 of 39 | 13% to 38% | 0 of 39 | 4 on 39 | 0.10 | 64 of 86 | 508s | 2 | 1 |
-| `gpt-oss:20b` | logic-context10-verify-strict | [2026-11-13-logic-pass-actions-cpu](results/2026-11-13-logic-pass-actions-cpu/) | 39 | 27 of 39 | 54% to 81% | 1 of 39 | 15 on 39 | 0.38 | 3 of 276 | 676s | 11 | 1 |
+| `gpt-oss:20b` | logic-context10-verify-strict | [2026-11-13-logic-pass-actions-cpu](results/2026-11-13-logic-pass-actions-cpu/) | 39 | 27 of 39 | 54% to 81% | 1 of 39 | 15 on 39 | 0.38 | 3 of 276 | 676s | 11 | 2 |
+| `gpt-oss:20b` | logic-context10-verify-strict | [2026-11-21-gpt-oss-test-split-actions-cpu](results/2026-11-21-gpt-oss-test-split-actions-cpu/) | 20 (test) | 14 of 20 | 48% to 85% | 0 of 20 | 7 on 20 | 0.35 | 3 of 146 | 688s | 5 | 2 |
 | `gpt-oss:20b` | logic-verify-strict | [2026-11-13-logic-pass-actions-cpu](results/2026-11-13-logic-pass-actions-cpu/) | 19 (dev) | 11 of 19 | 36% to 77% | 2 of 19 | 5 on 19 | 0.26 | 1 of 118 | 433s | 7 | 1 |
 | `gpt-oss:20b` | pr-agent-0.50.0-reasoning-low | [2026-11-13-pr-agent-actions-cpu](results/2026-11-13-pr-agent-actions-cpu/) | 19 (dev) | 10 of 19 | 32% to 73% | 9 of 19 | 20 on 19 | 1.05 | 0 of 108 | 599s | 15 | 1 |
 | `gpt-oss:20b` | reasoning-low | [2026-11-08-gpt-oss-actions-cpu](results/2026-11-08-gpt-oss-actions-cpu/) | 19 (dev) | 6 of 19 | 15% to 54% | - | - | - | 0 of 21 | 186s | 3 | 2 |
 | `gpt-oss:20b` | reasoning-low | [2026-11-08-moe-actions-cpu](results/2026-11-08-moe-actions-cpu/) | 39 | 12 of 39 | 19% to 46% | 2 of 39 | 16 on 39 | 0.41 | 4 of 86 | 166s | 11 | 2 |
 | `gpt-oss:20b` | reasoning-low-verify-lenient | [2026-11-08-gpt-oss-actions-cpu](results/2026-11-08-gpt-oss-actions-cpu/) | 39 | 16 of 39 | 27% to 57% | 2 of 39 | 10 on 39 | 0.26 | 4 of 131 | 222s | 11 | 1 |
-| `gpt-oss:20b` | reasoning-low-verify-strict | [2026-11-08-gpt-oss-actions-cpu](results/2026-11-08-gpt-oss-actions-cpu/) | 39 | 16 of 39 | 27% to 57% | 0 of 39 | 7 on 39 | 0.18 | 3 of 122 | 210s | 8 | 3 |
-| `gpt-oss:20b` | reasoning-low-verify-strict | [2026-11-13-logic-pass-actions-cpu](results/2026-11-13-logic-pass-actions-cpu/) | 39 | 18 of 39 | 32% to 61% | 2 of 39 | 8 on 39 | 0.21 | 3 of 129 | 223s | 4 | 3 |
-| `gpt-oss:20b` | reasoning-low-verify-strict | [2026-11-13-pr-agent-actions-cpu](results/2026-11-13-pr-agent-actions-cpu/) | 19 (dev) | 6 of 19 | 15% to 54% | 2 of 19 | 8 on 19 | 0.42 | 1 of 62 | 219s | 4 | 3 |
+| `gpt-oss:20b` | reasoning-low-verify-strict | [2026-11-08-gpt-oss-actions-cpu](results/2026-11-08-gpt-oss-actions-cpu/) | 39 | 16 of 39 | 27% to 57% | 0 of 39 | 7 on 39 | 0.18 | 3 of 122 | 210s | 8 | 4 |
+| `gpt-oss:20b` | reasoning-low-verify-strict | [2026-11-13-logic-pass-actions-cpu](results/2026-11-13-logic-pass-actions-cpu/) | 39 | 18 of 39 | 32% to 61% | 2 of 39 | 8 on 39 | 0.21 | 3 of 129 | 223s | 4 | 4 |
+| `gpt-oss:20b` | reasoning-low-verify-strict | [2026-11-13-pr-agent-actions-cpu](results/2026-11-13-pr-agent-actions-cpu/) | 19 (dev) | 6 of 19 | 15% to 54% | 2 of 19 | 8 on 19 | 0.42 | 1 of 62 | 219s | 4 | 4 |
+| `gpt-oss:20b` | reasoning-low-verify-strict | [2026-11-21-gpt-oss-test-split-actions-cpu](results/2026-11-21-gpt-oss-test-split-actions-cpu/) | 20 (test) | 5 of 20 | 11% to 47% | 0 of 20 | 3 on 20 | 0.15 | 2 of 57 | 199s | 2 | 4 |
 | `gpt-oss:20b` | reasoning-low-verify-strict-context10 | [2026-11-13-logic-pass-actions-cpu](results/2026-11-13-logic-pass-actions-cpu/) | 19 (dev) | 10 of 19 | 32% to 73% | 0 of 19 | 5 on 19 | 0.26 | 0 of 69 | 249s | 4 | 1 |
 | `gpt-oss:20b` | samples2-logic-verify-strict | [2026-11-13-logic-pass-actions-cpu](results/2026-11-13-logic-pass-actions-cpu/) | 19 (dev) | 11 of 19 | 36% to 77% | 2 of 19 | 6 on 19 | 0.32 | 0 of 162 | 497s | 3 | 1 |
 | `gpt-oss:20b` | samples2-verify-strict | [2026-11-13-logic-pass-actions-cpu](results/2026-11-13-logic-pass-actions-cpu/) | 19 (dev) | 9 of 19 | 27% to 68% | 1 of 19 | 6 on 19 | 0.32 | 1 of 109 | 252s | 2 | 1 |
@@ -62,8 +64,9 @@ The same review can catch different bugs from one run to the next, so one run's 
 | --- | --- | --- | --- |
 | `qwen2.5-coder:7b` | - | 2 | 1 of 39 in [2026-11-07-planted-actions-cpu](results/2026-11-07-planted-actions-cpu/); at least 0 of 39 in [2026-11-07-verify-actions-cpu](results/2026-11-07-verify-actions-cpu/) |
 | `qwen2.5-coder:14b` | - | 2 | 10 of 39 in [2026-11-07-planted-actions-cpu](results/2026-11-07-planted-actions-cpu/); at least 0 of 39 in [2026-11-07-verify-actions-cpu](results/2026-11-07-verify-actions-cpu/) |
+| `gpt-oss:20b` | logic-context10-verify-strict | 2 | 27 of 39 in [2026-11-13-logic-pass-actions-cpu](results/2026-11-13-logic-pass-actions-cpu/); 14 of 20 in [2026-11-21-gpt-oss-test-split-actions-cpu](results/2026-11-21-gpt-oss-test-split-actions-cpu/) |
 | `gpt-oss:20b` | reasoning-low | 2 | 6 of 19 in [2026-11-08-gpt-oss-actions-cpu](results/2026-11-08-gpt-oss-actions-cpu/); 12 of 39 in [2026-11-08-moe-actions-cpu](results/2026-11-08-moe-actions-cpu/) |
-| `gpt-oss:20b` | reasoning-low-verify-strict | 3 | 16 of 39 in [2026-11-08-gpt-oss-actions-cpu](results/2026-11-08-gpt-oss-actions-cpu/); 18 of 39 in [2026-11-13-logic-pass-actions-cpu](results/2026-11-13-logic-pass-actions-cpu/); 6 of 19 in [2026-11-13-pr-agent-actions-cpu](results/2026-11-13-pr-agent-actions-cpu/) |
+| `gpt-oss:20b` | reasoning-low-verify-strict | 4 | 16 of 39 in [2026-11-08-gpt-oss-actions-cpu](results/2026-11-08-gpt-oss-actions-cpu/); 18 of 39 in [2026-11-13-logic-pass-actions-cpu](results/2026-11-13-logic-pass-actions-cpu/); 6 of 19 in [2026-11-13-pr-agent-actions-cpu](results/2026-11-13-pr-agent-actions-cpu/); 5 of 20 in [2026-11-21-gpt-oss-test-split-actions-cpu](results/2026-11-21-gpt-oss-test-split-actions-cpu/) |
 
 Left out of every run: encode/httpx#3670. Not a bug: the stream's file comes from the builtin open(), so close() is synchronous and dropping its await fixes the line rather than breaking it. The merged PR awaits that file's read() and close() (lines 199, 205, 217), which raises TypeError on httpx's v1 branch.
 

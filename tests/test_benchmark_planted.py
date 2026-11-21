@@ -90,6 +90,18 @@ def key(bug: dict) -> tuple[str, int]:
 # ── the case files ───────────────────────────────────────────────────────
 
 
+@pytest.mark.parametrize("path", sorted((BENCHMARK / "planted" / "variants").glob("*.yml")), ids=lambda path: path.stem)
+def test_a_review_variant_sets_the_logic_pass_and_context_itself(path):
+    # A model family's settings (profiles.MODEL_SETTINGS) fill in what a variant leaves out, so a variant that left these
+    # out would measure something else once a family's default changed: gpt-oss gets both since 21 Nov.
+    import yaml
+
+    review = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}).get("review")
+    if review is not None:
+        assert {"logic_pass", "context_lines"} <= set(review), path.name
+        assert not planted.policy_for(8192, path.read_text(encoding="utf-8")).errors
+
+
 @pytest.mark.parametrize("name", CASE_FILES)
 def test_every_case_is_well_formed(name):
     bugs = cases(name)

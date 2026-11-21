@@ -1,3 +1,6 @@
 # One more short call per model finding, asking the model whether it is a real defect.
+# logic_pass and context_lines are pinned, so the variant keeps its meaning now that gpt-oss gets both by default.
 review:
   verify: strict
+  logic_pass: false
+  context_lines: 0

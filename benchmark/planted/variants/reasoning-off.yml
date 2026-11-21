@@ -1,3 +1,6 @@
 # A thinking model with its thinking turned off, for models that think by default (qwen3).
+# logic_pass and context_lines are pinned, so the variant keeps its meaning now that gpt-oss gets both by default.
 review:
   reasoning: "off"
+  logic_pass: false
+  context_lines: 0

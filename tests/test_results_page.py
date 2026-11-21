@@ -390,6 +390,7 @@ def test_a_rows_settings_name_the_variant_file_that_sets_exactly_them():
     assert _variant({}) == ""
     assert _variant({"reasoning": "low", "verify": "strict"}) == "reasoning-low-verify-strict"
     assert _variant({"reasoning": "low", "verify": "strict", "logic_pass": "true", "context_lines": "10"}) == "logic-context10-verify-strict"
+    assert _variant({"reasoning": "low", "verify": "strict", "logic_pass": "false", "context_lines": "0"}) == "reasoning-low-verify-strict"
     assert _variant({"verify": "strict", "samples": "2"}) == "verify-strict-samples-2"  # no file sets just those
 
 

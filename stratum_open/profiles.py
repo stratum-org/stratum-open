@@ -62,11 +62,11 @@ PRESETS: dict[str, dict[str, Any]] = {
 # free runner gpt-oss:20b found 16 of 39 planted bugs with the first two
 # (benchmark/results/2026-11-08-gpt-oss-actions-cpu). With the logic pass and
 # ten lines of context as well, it found 27 of 39 against 18 for the first two
-# alone (2026-11-13-logic-pass-actions-cpu), and on the 20 cases kept back from
-# tuning 13 against 9 that day and 11 of 15 against 4 of the same 15 on 21 Nov
-# (2026-11-21-gpt-oss-test-split-actions-cpu). Either one alone found one or two
-# more. The cost is the wait: a median of about 11 minutes a PR on the free
-# runner instead of about 3.5, and up to 43 minutes on a large PR.
+# alone (2026-11-13-logic-pass-actions-cpu). On the 20 cases kept back from
+# tuning, they found 13 against 9 that day, and 14 against 5 when run again on
+# 21 Nov (2026-11-21-gpt-oss-test-split-actions-cpu). Either one alone found one
+# or two more. The cost is the wait: a median of about 11.5 minutes a PR on the
+# free runner instead of about 3.5, and up to 43 minutes on a large PR.
 MODEL_SETTINGS: tuple[tuple[re.Pattern[str], dict[str, tuple[Any, str]]], ...] = (
     # Ollama's names for it: gpt-oss, gpt-oss:20b, library/gpt-oss:120b.
     (re.compile(r"(?:^|/)gpt-oss(?::|$)", re.IGNORECASE), {

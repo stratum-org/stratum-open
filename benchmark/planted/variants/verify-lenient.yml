@@ -1,3 +1,6 @@
 # One more short call per model finding, with the prompt that works the case through first.
+# logic_pass and context_lines are pinned, so the variant keeps its meaning now that gpt-oss gets both by default.
 review:
   verify: lenient
+  logic_pass: false
+  context_lines: 0

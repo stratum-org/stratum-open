@@ -1,3 +1,6 @@
 # For thinking models (gpt-oss, Qwen3): less thinking, so the answer fits the output budget.
+# logic_pass and context_lines are pinned, so the variant keeps its meaning now that gpt-oss gets both by default.
 review:
   reasoning: low
+  logic_pass: false
+  context_lines: 0

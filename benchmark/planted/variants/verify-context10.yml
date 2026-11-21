@@ -1,4 +1,6 @@
 # Both of the above.
+# logic_pass and context_lines are pinned, so the variant keeps its meaning now that gpt-oss gets both by default.
 review:
   verify: strict
   context_lines: 10
+  logic_pass: false

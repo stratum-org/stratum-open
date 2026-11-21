@@ -199,13 +199,13 @@ Its tools only read: none writes to GitHub, comments, labels or pushes.
 
 | Tool | What it does | Model |
 | --- | --- | --- |
-| `check_local(base="main")` | `review --local` without the model: the checks on the commits between `base` and HEAD, in seconds. | No |
-| `review_local(base="main", timeout=600)` | `review --local`: the checks and the model's review. It stops after `timeout` seconds with what it has, and reports progress to a client that asks for it. With no model answering, it returns the checks and says so. | Yes |
+| `check_local(base)` | `review --local` without the model: the checks on the commits between `base` and HEAD, in seconds. `checks.go_vet` and `checks.clippy` don't run here, since building the code runs it. | No |
+| `review_local(base, timeout=600)` | `review --local`: the checks and the model's review. It makes no model call after `timeout` seconds and answers with what it has; a call already sent gets the time that's left, though the model client's retries of a server error can run past it. It reports progress to a client that asks for it. With no model answering, it returns the checks and says so. | Yes |
 | `explain_finding(fingerprint)` | One finding from an earlier call, with the code around it and how to fix it. Kept in memory until the server stops. | No |
 | `check_policy(path=".stratum/policy.yml")` | `policy check`, on a file in the checkout. | No |
 | `triage_pr(repo, number)` | The triage label an open PR would get from the checks, with its reasons, as `review owner/repo#N --no-model` would give it. Reads GitHub with `GITHUB_TOKEN` or the GitHub CLI's sign-in. | No |
 
-A finding comes back as JSON: `fingerprint`, `rule`, `severity`, `category`, `source`, `path`, `line`, `line_end`, `title`, `message`, `suggestion` and `code`, the lines it's on. An answer holds at most 50, most severe first, and `omitted` counts the rest. The tools review HEAD, as a PR would show it, so an edit that isn't committed isn't read; `uncommitted` lists those. The model comes from the same `STRATUM_MODEL_*` variables as the CLI, and the policy from `.stratum/policy.yml` as it is on `base`.
+A finding comes back as JSON: `fingerprint`, `rule`, `severity`, `category`, `source`, `path`, `line`, `line_end`, `title`, `message`, `suggestion` and `code`, the lines it's on. An answer holds at most 50, most severe first, and `omitted` counts the rest. Without a `base`, the local tools compare with the remote's default branch (`origin/HEAD`), or `main` when that isn't set, and the answer's `base` and `notes` say which. They review HEAD, as a PR would show it, so an edit that isn't committed isn't read; `uncommitted` lists those. The model comes from the same `STRATUM_MODEL_*` variables as the CLI, and the policy from `.stratum/policy.yml` as it is on `base`.
 
 **VS Code**, in `.vscode/mcp.json` ([format](https://code.visualstudio.com/docs/copilot/reference/mcp-configuration)):
 

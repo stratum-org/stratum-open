@@ -14,8 +14,10 @@ Each tool runs the CLI's own code:
 
 Nothing here writes to GitHub, comments, labels or pushes: `triage_pr` reads
 through a session that refuses anything but a GET or a GraphQL query before
-it's sent. The findings are kept in memory, for `explain_finding`, until the
-server stops; nothing is stored.
+it's sent. The local tools don't run the checks that build the code
+(`checks.go_vet`, `checks.clippy`), since a build runs it. The findings are
+kept in memory, for `explain_finding`, until the server stops; nothing is
+stored.
 
 The tool names and the JSON they return are the contract for any other
 server of these tools (hosted Stratum's included): change both together.
@@ -58,6 +60,9 @@ AROUND = 5  # lines shown on each side of a finding by explain_finding
 MAX_CONTEXT_LINES = 80
 MAX_KEPT = 2000  # findings explain_finding can still explain; the oldest are forgotten first
 DEFAULT_TIMEOUT = 600  # seconds, for review_local: a model on a CPU can take minutes
+# Why checks.go_vet and checks.clippy don't run from these tools, which only read: building the code runs it.
+NO_BUILD = ("it builds the code, which runs the code's build scripts and macros, and these tools only read. "
+            "`stratum-open review --local` runs it.")
 INSTRUCTIONS = (
     "Stratum Open reviews the commits on this checkout's branch against a base branch, as it would review the pull "
     "request. Call check_local (seconds, no model) after you commit a change, fix what it finds, commit and call it "
@@ -205,10 +210,10 @@ class Tools:
 
     # ── the tools ────────────────────────────────────────────────────────
 
-    def check_local(self, base: str = "main") -> dict[str, Any]:
+    def check_local(self, base: str | None = None) -> dict[str, Any]:
         return self._local(base, None)
 
-    def review_local(self, base: str = "main", timeout: int = DEFAULT_TIMEOUT,
+    def review_local(self, base: str | None = None, timeout: int = DEFAULT_TIMEOUT,
                      progress: Callable[[int, str], None] | None = None, stop: threading.Event | None = None) -> dict[str, Any]:
         if timeout < 1:
             raise Refused("timeout is in seconds, and at least 1.")
@@ -303,23 +308,27 @@ class Tools:
 
     # ── the work they share ──────────────────────────────────────────────
 
-    def _local(self, base: str, make_model) -> dict[str, Any]:
-        if not base or base.startswith("-"):
+    def _local(self, base: str | None, make_model) -> dict[str, Any]:
+        base, notes = (base, []) if base else default_base()
+        if base.startswith("-"):
             raise Refused(f"Not a branch or commit: {base!r}.")
+        head = (cli._git_or_none(".", "rev-parse", "HEAD") or "").strip()
         try:
-            local = cli.local_review(base, make_model=make_model)
+            local = cli.local_review(base, make_model=make_model, no_build=NO_BUILD)
         except SystemExit as exc:  # the CLI's own one-line error: git couldn't compare BASE with HEAD
             raise Refused(str(exc.code)) from None
-        head = (cli._git_or_none(".", "rev-parse", "HEAD") or "").strip()
+        moved = (cli._git_or_none(".", "rev-parse", "HEAD") or "").strip()
+        if moved != head:
+            notes.append(f"HEAD moved from {head[:7]} to {moved[:7]} during the review, so part of it may have read the newer commit. "
+                         "Call it again for an answer about one commit.")
         status = cli._git_or_none(".", "status", "--porcelain", "--untracked-files=normal") or ""
         uncommitted = [line[3:] for line in status.splitlines() if len(line) > 3]
-        notes = []
         if uncommitted:
             notes.append(f"{listed(uncommitted)} {'has' if len(uncommitted) == 1 else 'have'} changes that aren't committed, "
                          "which this didn't read: it reviews HEAD. Commit them, and call it again to have them checked.")
         if local is None:
             return {"base": base, "head": head, "files": 0, "findings": [], "total": 0, "omitted": 0, "conclusion": "success",
-                    "uncommitted": uncommitted, "model": None, "summary": "", "notes": [f"No changes between {base} and HEAD."] + notes}
+                    "uncommitted": uncommitted, "model": None, "summary": "", "notes": notes + [f"No changes between {base} and HEAD."]}
         result, files, contents, model = local
         notes += [f"policy: {e} Using the defaults." for e in result.policy.errors] + [f"policy: {w}" for w in result.policy.warnings]
         notes += result.check_notes
@@ -359,6 +368,19 @@ class Tools:
         if len(lines) > MAX_QUOTED_LINES:
             code = "\n".join(lines[:MAX_QUOTED_LINES] + [f"... and {count(len(lines) - MAX_QUOTED_LINES, 'more line')}"])
         return _as_json(finding, code)
+
+
+def default_base() -> tuple[str, list[str]]:
+    """The base when a call names none: the remote's default branch
+    (origin/HEAD), as the local branch of that name if there is one, else
+    `main`; and a note saying which it is."""
+    remote = (cli._git_or_none(".", "symbolic-ref", "--short", "refs/remotes/origin/HEAD") or "").strip()
+    name = remote.removeprefix("origin/")
+    if not remote.startswith("origin/") or not name:
+        return "main", ["Compared with main: no base was given, and origin/HEAD isn't set (`git remote set-head origin --auto` sets it)."]
+    if cli._git_or_none(".", "rev-parse", "--verify", "--quiet", f"refs/heads/{name}") is None:
+        return remote, [f"Compared with {remote}, the remote's default branch: no base was given, and there's no local {name}."]
+    return name, [f"Compared with {name}, the remote's default branch: no base was given."]
 
 
 def _as_json(finding: Finding, code: str) -> dict[str, Any]:
@@ -405,20 +427,23 @@ def build(tools: Tools | None = None):
             raise ToolError(str(exc)) from None
 
     @server.tool(annotations=local)
-    def check_local(base: str = "main") -> LocalJSON:
+    def check_local(base: str | None = None) -> LocalJSON:
         """The checks that need no model, on the commits between `base` and
         HEAD: workflows, dependencies, secrets, Bandit, Ruff, hidden Unicode,
-        agent files and the rest. Answers in seconds: call it after each
-        commit. Findings come most severe first, at most 50; `omitted`
-        counts the rest."""
+        agent files and the rest, but not go vet or Clippy, which build the
+        code and so run it. `base` defaults to the remote's default
+        branch (origin/HEAD), else main; the answer's `base` says which.
+        Answers in seconds: call it after each commit. Findings come most
+        severe first, at most 50; `omitted` counts the rest."""
         return answer(tools.check_local, base)
 
     @server.tool(annotations=local)
-    async def review_local(ctx: Context, base: str = "main", timeout: int = DEFAULT_TIMEOUT) -> LocalJSON:
+    async def review_local(ctx: Context, base: str | None = None, timeout: int = DEFAULT_TIMEOUT) -> LocalJSON:
         """`check_local`, plus the model's review of the change, with the
         model the STRATUM_MODEL_* variables or the policy name. Takes minutes
-        on a CPU, and stops after `timeout` seconds with what it has. With no
-        model answering, it returns the checks and says so in `notes`."""
+        on a CPU. It makes no model call after `timeout` seconds and answers
+        with what it has. With no model answering, it returns the checks and
+        says so in `notes`."""
         stop = threading.Event()
 
         def progress(done: int, message: str) -> None:

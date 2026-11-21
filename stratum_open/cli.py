@@ -197,14 +197,16 @@ def _review_local(args, base: str) -> int:
     return 1 if any(f.severity == "critical" for f in result.findings) else 0
 
 
-def local_review(base: str, *, make_model=model_from_policy):
+def local_review(base: str, *, make_model=model_from_policy, no_build: str = ""):
     """`review --local`'s review of this checkout, which `stratum-open mcp`
     runs too: (the engine's result, the files, the text read of them, the
     model), or None when nothing changed. `make_model(policy)` makes the
-    model from the policy on BASE; None runs the checks only. Nothing is
-    printed to stdout."""
+    model from the policy on BASE; None runs the checks only. `no_build`,
+    when given, is why the checks that build the code (`checks.go_vet`,
+    `checks.clippy`) don't run. Nothing is printed to stdout."""
     from stratum_open.checks.common import looks_binary
     from stratum_open.checks.dependencies import PackageLookup
+    from stratum_open.checks.tools import Worktree
     from stratum_open.engine import analyze
     from stratum_open.repo.boundaries import boundary_findings
     from stratum_open.repo.removed_names import removed_name_findings
@@ -249,7 +251,7 @@ def local_review(base: str, *, make_model=model_from_policy):
             contents[file.path] = text
     top = (_git_or_none(".", "rev-parse", "--show-toplevel") or ".").strip()
     result = analyze(
-        worktree=_local_worktree(policy, files, top),
+        worktree=Worktree(top, no_build) if no_build else _local_worktree(policy, files, top),
         title=_git(".", "log", "-1", "--format=%s").strip(), description=_git(".", "log", "-1", "--format=%b").strip(),
         files=files, policy=policy, model=model, contents=contents or None,
         lookup=PackageLookup() if policy.dependencies.registry_lookup else None,

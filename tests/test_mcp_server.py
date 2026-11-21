@@ -80,7 +80,7 @@ def test_it_lists_the_five_tools_and_each_only_reads():
     assert [tool.name for tool in tools] == list(TOOLS)
     assert all(tool.annotations.read_only_hint and not tool.annotations.destructive_hint for tool in tools)
     by_name = {tool.name: tool for tool in tools}
-    assert by_name["check_local"].input_schema["properties"]["base"]["default"] == "main"
+    assert by_name["check_local"].input_schema["properties"]["base"]["default"] is None  # the remote's default branch
     assert set(by_name["review_local"].input_schema["properties"]) == {"base", "timeout"}
     assert by_name["triage_pr"].input_schema["required"] == ["repo", "number"]
     # The JSON's shape is in the listing, for a client to check it against.
@@ -110,19 +110,55 @@ def test_check_local_names_the_changes_it_didnt_read(repo):
     data = call("check_local").structured_content
     assert [f["rule"] for f in data["findings"]] == ["code/secret"]  # HEAD, as committed
     assert sorted(data["uncommitted"]) == ["app.py", "new.py"]
-    assert "changes that aren't committed, which this didn't read" in data["notes"][0]
+    assert "changes that aren't committed, which this didn't read" in data["notes"][1]
 
 
 @needs_sdk
 def test_check_local_with_nothing_changed_or_a_bad_base(repo):
     repo.git("checkout", "-q", "main")
     data = call("check_local").structured_content
-    assert data["findings"] == [] and data["notes"] == ["No changes between main and HEAD."]
+    assert data["findings"] == [] and data["notes"] == ["Compared with main: no base was given, and origin/HEAD isn't set (`git remote set-head origin --auto` sets it).", "No changes between main and HEAD."]
     result = call("check_local", {"base": "nosuch"})
     assert result.is_error and "git couldn't compare nosuch with HEAD" in result.content[0].text
     result = call("check_local", {"base": "--output=written.txt"})  # an option, not a branch: git would write a file
     assert result.is_error and "Not a branch or commit" in result.content[0].text
     assert not (repo.path / "written.txt").exists()
+
+
+@needs_sdk
+def test_without_a_base_it_compares_with_the_remotes_default_branch(repo):
+    data = call("check_local").structured_content
+    assert data["base"] == "main" and data["notes"][0] == "Compared with main: no base was given, and origin/HEAD isn't set (`git remote set-head origin --auto` sets it)."
+    # origin/HEAD names trunk, which has no local branch yet, then one.
+    main = repo.git("rev-parse", "main").strip()
+    repo.git("update-ref", "refs/remotes/origin/trunk", main)
+    repo.git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+    data = call("check_local").structured_content
+    assert data["base"] == "origin/trunk" and [f["rule"] for f in data["findings"]] == ["code/secret"]
+    assert data["notes"][0] == "Compared with origin/trunk, the remote's default branch: no base was given, and there's no local trunk."
+    repo.git("branch", "trunk", main)
+    data = call("check_local").structured_content
+    assert data["base"] == "trunk" and data["notes"][0] == "Compared with trunk, the remote's default branch: no base was given."
+
+
+@needs_sdk
+def test_the_checks_that_build_the_code_dont_run(repo, monkeypatch):
+    """Building runs the code (build scripts, macros, cgo): a read-only tool doesn't, and says so."""
+    (repo.path / ".stratum").mkdir()
+    (repo.path / ".stratum" / "policy.yml").write_text("checks:\n  go_vet: true\n")
+    repo.git("add", ".")
+    repo.git("commit", "-q", "-m", "Turn on go vet")
+    repo.git("branch", "-f", "main")
+    (repo.path / "go.mod").write_text("module example.com/m\n\ngo 1.22\n")
+    (repo.path / "main.go").write_text('package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Printf("%d\\n", "x")\n}\n')
+    repo.git("add", ".")
+    repo.git("commit", "-q", "-m", "Add a Go program")
+    built = []
+    monkeypatch.setattr("stratum_open.checks.go_vet.available", lambda: True)
+    monkeypatch.setattr("stratum_open.checks.tools.group_by_root", lambda *args: built.append(args) or {})
+    data = call("check_local", {"base": "main"}).structured_content
+    assert built == []
+    assert "go vet didn't run: it builds the code, which runs the code's build scripts and macros, and these tools only read." in " ".join(data["notes"])
 
 
 @needs_sdk
@@ -177,11 +213,34 @@ def test_review_local_with_the_fake_model(repo, monkeypatch):
 def test_review_local_with_no_model_answering_returns_the_checks_and_says_so(repo, monkeypatch):
     error = "couldn't reach the model at http://localhost:11434/v1: ConnectionError"
     monkeypatch.setattr("stratum_open.mcp_server.model_from_policy", lambda policy: FakeModel(*[Reply("", "fake-7b", 0, error=error)] * 5))
-    data = call("review_local").structured_content
+    data = call("review_local", {"base": "main"}).structured_content
     assert [f["rule"] for f in data["findings"]] == ["code/secret"]
     assert data["model"]["answered"] is False
     assert data["notes"][0].startswith(f"No model answered ({error}), so this has only the checks. To have the model review it, point "
                                        "STRATUM_MODEL_ENDPOINT")
+
+
+@needs_sdk
+def test_review_local_names_the_commit_it_started_on_when_head_moves(repo, monkeypatch):
+    class Committing(FakeModel):
+        def complete(self, system, user, **kwargs):  # the agent commits while the model reads
+            (repo.path / "app.py").write_text("x = 1\n")
+            repo.git("commit", "-q", "-am", "Take the key out")
+            return super().complete(system, user, **kwargs)
+
+    started = repo.git("rev-parse", "HEAD").strip()
+    monkeypatch.setattr("stratum_open.mcp_server.model_from_policy", lambda policy: Committing(model_answer()))
+
+    async def work(client):
+        data = (await client.call_tool("review_local", {"base": "main"})).structured_content
+        found = next(f for f in data["findings"] if f["rule"] == "code/secret")
+        return data, (await client.call_tool("explain_finding", {"fingerprint": found["fingerprint"]})).structured_content
+
+    data, explained = session(work)
+    moved = repo.git("rev-parse", "HEAD").strip()
+    assert data["head"] == explained["head"] == started != moved
+    assert f"HEAD moved from {started[:7]} to {moved[:7]} during the review" in " ".join(data["notes"])
+    assert SECRET in explained["context"]  # the code as it was on the commit reviewed
 
 
 @needs_sdk
@@ -198,6 +257,7 @@ def test_review_local_stops_at_its_timeout(repo, monkeypatch):
     assert model.prompts == []
     assert [f["rule"] for f in data["findings"]] == ["code/secret"]
     assert "The review stopped at its timeout of 1 second, with 1 model call not made." in " ".join(data["notes"])
+    assert data["base"] == "main"  # no base given, and no origin/HEAD
     assert call("review_local", {"timeout": 0}).is_error
 
 

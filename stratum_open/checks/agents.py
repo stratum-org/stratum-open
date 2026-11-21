@@ -20,7 +20,7 @@ AGENT_FILES = (
     "**/AGENTS.md", "**/CLAUDE.md", "**/CLAUDE.local.md", "**/GEMINI.md",
     "**/.cursorrules", "**/.cursor/rules/**", "**/.windsurfrules", "**/.windsurf/rules/**",
     "**/.clinerules", "**/.clinerules/**", "**/.roomodes", "**/.roo/**",
-    "**/.aider.conf.yml", "**/.mcp.json", "**/.vscode/mcp.json",
+    "**/.aider.conf.yml", "**/.mcp.json", "**/.vscode/mcp.json", "**/.cursor/mcp.json",
     "**/.claude/**", "**/.continue/**", "**/.gemini/**",
     ".github/copilot-instructions.md", ".github/instructions/**", ".github/prompts/**",
 )

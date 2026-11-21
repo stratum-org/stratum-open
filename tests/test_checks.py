@@ -593,7 +593,7 @@ def test_workflow_comments_are_ignored():
 @pytest.mark.parametrize("path", [
     "AGENTS.md", "packages/web/AGENTS.md", "CLAUDE.md", "GEMINI.md", "agents.md", ".cursorrules",
     ".cursor/rules/style.mdc", ".github/copilot-instructions.md", ".github/instructions/py.instructions.md",
-    ".windsurfrules", ".clinerules", ".aider.conf.yml", ".mcp.json", ".vscode/mcp.json",
+    ".windsurfrules", ".clinerules", ".aider.conf.yml", ".mcp.json", ".vscode/mcp.json", ".cursor/mcp.json",
     ".claude/settings.json", ".continue/config.yaml",
 ])
 def test_agent_instruction_files_need_a_maintainer(path):

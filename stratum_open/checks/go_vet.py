@@ -21,8 +21,10 @@ it's listed. Of staticcheck, only the SA checks, its "correctness" ones,
 except those in DROPPED_SA. It runs with `-show-ignored`, so a `//lint:ignore`
 the PR adds can't hide one, and a finding on such a line says so.
 
-Neither has been measured on merged PRs yet: building each project of the
-benchmark's corpus takes minutes (benchmark/README.md).
+On 60 merged PRs of six Go projects, each built at its head
+(benchmark/results/2026-11-21-build-checks-actions-cpu), go vet and every SA
+check reported one issue on the 987 lines they add: SA1019 on a deprecated
+name, true but harmless, which is why it's left out. The check kept nothing.
 """
 
 from __future__ import annotations

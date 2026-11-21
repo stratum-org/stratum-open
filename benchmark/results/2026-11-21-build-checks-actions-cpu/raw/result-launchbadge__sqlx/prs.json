@@ -1,0 +1,502 @@
+[
+ {
+  "repo": "launchbadge/sqlx",
+  "pr": 4514,
+  "head": "f6d7a6831399b3b8f3a5e5fdd30a290194cedf71",
+  "order": 0,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.94 (e408947bfd 2026-03-25)"
+  },
+  "setup_seconds": 8.3,
+  "files": {
+   "go vet": 0,
+   "Clippy": 6
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 89
+  },
+  "seconds": {
+   "Clippy": 27.5
+  },
+  "programs": {
+   "Clippy": 27.4
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "sqlx-postgres",
+    "code": 0,
+    "stderr": "",
+    "seconds": 15.6,
+    "timed_out": false,
+    "built": 113,
+    "compiled": 113
+   },
+   {
+    "program": "Clippy",
+    "folder": "sqlx-core",
+    "code": 0,
+    "stderr": "",
+    "seconds": 9.1,
+    "timed_out": false,
+    "built": 79,
+    "compiled": 0
+   },
+   {
+    "program": "Clippy",
+    "folder": "sqlx-mysql",
+    "code": 0,
+    "stderr": "",
+    "seconds": 2.7,
+    "timed_out": false,
+    "built": 94,
+    "compiled": 7
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88518.5,
+   "clone_mb": 8.9,
+   "target_mb": 281.3
+  }
+ },
+ {
+  "repo": "launchbadge/sqlx",
+  "pr": 4508,
+  "head": "9763804f5fd90a6638305486eef77e9ae386a39a",
+  "order": 1,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.94 (e408947bfd 2026-03-25)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 80
+  },
+  "seconds": {
+   "Clippy": 5.7
+  },
+  "programs": {
+   "Clippy": 5.7
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "sqlx-macros-core",
+    "code": 0,
+    "stderr": "",
+    "seconds": 5.7,
+    "timed_out": false,
+    "built": 106,
+    "compiled": 21
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88454.7,
+   "clone_mb": 9.0,
+   "target_mb": 370.8
+  }
+ },
+ {
+  "repo": "launchbadge/sqlx",
+  "pr": 4503,
+  "head": "98af7390b0da30aa65af2be7cf38015255b3cf89",
+  "order": 2,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.94 (e408947bfd 2026-03-25)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 2
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 34
+  },
+  "seconds": {
+   "Clippy": 3.2
+  },
+  "programs": {
+   "Clippy": 3.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "sqlx-mysql",
+    "code": 0,
+    "stderr": "",
+    "seconds": 3.2,
+    "timed_out": false,
+    "built": 94,
+    "compiled": 2
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88418.2,
+   "clone_mb": 9.0,
+   "target_mb": 407.2
+  }
+ },
+ {
+  "repo": "launchbadge/sqlx",
+  "pr": 4498,
+  "head": "cc05ae8ddd1e26f05cd925d86a5f4cfd7df5e500",
+  "order": 3,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.94 (e408947bfd 2026-03-25)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 9
+  },
+  "seconds": {
+   "Clippy": 4.2
+  },
+  "programs": {
+   "Clippy": 4.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "sqlx-postgres",
+    "code": 0,
+    "stderr": "",
+    "seconds": 4.2,
+    "timed_out": false,
+    "built": 113,
+    "compiled": 2
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88388.1,
+   "clone_mb": 9.2,
+   "target_mb": 437.0
+  }
+ },
+ {
+  "repo": "launchbadge/sqlx",
+  "pr": 4496,
+  "head": "7aa714ba9eb9526ca2030491429d3498825fae5e",
+  "order": 4,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.94 (e408947bfd 2026-03-25)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 159
+  },
+  "seconds": {
+   "Clippy": 2.1
+  },
+  "programs": {
+   "Clippy": 2.1
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "sqlx-mysql",
+    "code": 0,
+    "stderr": "",
+    "seconds": 2.1,
+    "timed_out": false,
+    "built": 94,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88388.0,
+   "clone_mb": 9.2,
+   "target_mb": 437.2
+  }
+ },
+ {
+  "repo": "launchbadge/sqlx",
+  "pr": 4493,
+  "head": "50f5761cdd223e106b969ca4d2eed1934cd0a367",
+  "order": 5,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.94 (e408947bfd 2026-03-25)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 6
+  },
+  "seconds": {
+   "Clippy": 1.5
+  },
+  "programs": {
+   "Clippy": 1.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "sqlx-mysql",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.5,
+    "timed_out": false,
+    "built": 94,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88387.7,
+   "clone_mb": 9.2,
+   "target_mb": 437.4
+  }
+ },
+ {
+  "repo": "launchbadge/sqlx",
+  "pr": 4488,
+  "head": "1ed6b65b9b8b021e5b4ef23063c1c142000f8b19",
+  "order": 6,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.94 (e408947bfd 2026-03-25)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 42
+  },
+  "seconds": {
+   "Clippy": 1.9
+  },
+  "programs": {
+   "Clippy": 1.9
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "sqlx-postgres",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.9,
+    "timed_out": false,
+    "built": 113,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88387.5,
+   "clone_mb": 9.2,
+   "target_mb": 437.6
+  }
+ },
+ {
+  "repo": "launchbadge/sqlx",
+  "pr": 4485,
+  "head": "8f06d2c4fbbb80c28248fbb7e3f1e0ba2e1ae257",
+  "order": 7,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.94 (e408947bfd 2026-03-25)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 6
+  },
+  "seconds": {
+   "Clippy": 1.9
+  },
+  "programs": {
+   "Clippy": 1.9
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "sqlx-postgres",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.9,
+    "timed_out": false,
+    "built": 113,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88387.6,
+   "clone_mb": 9.2,
+   "target_mb": 437.5
+  }
+ },
+ {
+  "repo": "launchbadge/sqlx",
+  "pr": 4478,
+  "head": "96be3015950bf1e584f71028f73641ba4a6df838",
+  "order": 8,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.94 (e408947bfd 2026-03-25)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 3
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 65
+  },
+  "seconds": {
+   "Clippy": 6.9
+  },
+  "programs": {
+   "Clippy": 6.9
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "sqlx-core",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.1,
+    "timed_out": false,
+    "built": 79,
+    "compiled": 0
+   },
+   {
+    "program": "Clippy",
+    "folder": "sqlx-mysql",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.7,
+    "timed_out": false,
+    "built": 94,
+    "compiled": 1
+   },
+   {
+    "program": "Clippy",
+    "folder": "sqlx-sqlite",
+    "code": 0,
+    "stderr": "",
+    "seconds": 4.1,
+    "timed_out": false,
+    "built": 92,
+    "compiled": 11
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88302.8,
+   "clone_mb": 9.3,
+   "target_mb": 486.7
+  }
+ },
+ {
+  "repo": "launchbadge/sqlx",
+  "pr": 4477,
+  "head": "4c9d944f13ceb87aea8809f31251611bcc7be43b",
+  "order": 9,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.94 (e408947bfd 2026-03-25)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 36
+  },
+  "seconds": {
+   "Clippy": 2.0
+  },
+  "programs": {
+   "Clippy": 2.0
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "sqlx-postgres",
+    "code": 0,
+    "stderr": "",
+    "seconds": 2.0,
+    "timed_out": false,
+    "built": 113,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88302.8,
+   "clone_mb": 9.3,
+   "target_mb": 486.7
+  }
+ }
+]

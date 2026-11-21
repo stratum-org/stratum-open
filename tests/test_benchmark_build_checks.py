@@ -216,12 +216,12 @@ def test_each_run_keeps_its_exit_code_its_error_and_what_it_built(tmp_path):
     cargo = "\n".join([artifact % ("anstyle", "false"), artifact % ("clap_lex", "true"), artifact % ("clap", "false"),
                        clippy_message("src/lib.rs", 3, "clippy::eq_op"), '{"reason": "build-finished", "success": true}'])
     vet = '{}\n{\n\t"example.com/m/sub": {}\n}\n'
-    calls = [call("Clippy", cargo, "warning: unused manifest key\n", cwd=str(tmp_path / "crates" / "a")),
+    calls = [call("Clippy", cargo, "error: could not compile `c`\n", cwd=str(tmp_path / "crates" / "a")),
              call("go vet", vet, "# example.com/m/sub\nvet: sub/b.go:5:2: undefined: Printz\n", code=1, cwd=str(tmp_path)),
              call("staticcheck", "", "", cwd=str(tmp_path)),
              call("Clippy", "", "", code=None, cwd=str(tmp_path), timed_out=True)]
     assert build_checks.runs(str(tmp_path), calls) == [
-        {"program": "Clippy", "folder": "crates/a", "code": 0, "stderr": "warning: unused manifest key", "seconds": 1.5, "timed_out": False,
+        {"program": "Clippy", "folder": "crates/a", "code": 0, "stderr": "error: could not compile `c`", "seconds": 1.5, "timed_out": False,
          "built": 3, "compiled": 2},
         # go vet's `# package` lines aren't its error.
         {"program": "go vet", "folder": ".", "code": 1, "stderr": "vet: sub/b.go:5:2: undefined: Printz", "seconds": 1.5, "timed_out": False,
@@ -235,6 +235,39 @@ def test_each_run_keeps_its_exit_code_its_error_and_what_it_built(tmp_path):
     # Before Go 1.24 or so the report went to stderr, which isn't the error either.
     old_go = build_checks.runs(str(tmp_path), [call("go vet", "", "# example.com/m\n{}\n", cwd=str(tmp_path))])
     assert (old_go[0]["stderr"], old_go[0]["built"]) == ("", 1)
+
+
+def test_the_error_line_is_the_one_that_says_what_went_wrong():
+    # go's download log, as the Go projects' first PRs had it.
+    assert build_checks.error_line("go: downloading github.com/jinzhu/now v1.1.5\ngo: downloading golang.org/x/text v0.31.0\n") == ""
+    assert build_checks.error_line("go: downloading x v1\n# m\nvet: a.go:7:2: undefined: Printz\n") == "vet: a.go:7:2: undefined: Printz"
+    # cargo's warnings about the manifest come first, and rustup's progress before its error.
+    assert build_checks.error_line("warning: `package.homepage` is redundant with `package.repository`\n") == ""
+    assert build_checks.error_line("info: syncing channel updates for nightly-2026-05-04\n"
+                                   "error: 'cargo-clippy' is not installed for the toolchain 'nightly-2026-05-04'\n") == (
+        "error: 'cargo-clippy' is not installed for the toolchain 'nightly-2026-05-04'")
+    assert build_checks.error_line("info: syncing channel updates for nightly-2026-05-04\n") == "info: syncing channel updates for nightly-2026-05-04"
+
+
+def test_the_toolchains_are_set_up_in_each_crates_folder(monkeypatch, tmp_path):
+    # A crate can name a toolchain of its own (axum-macros pins a nightly), so Clippy is added for that one too.
+    write(tmp_path, {"Cargo.toml": "[workspace]\n", "a/Cargo.toml": "[package]\n", "macros/Cargo.toml": "[package]\n",
+                     "macros/rust-toolchain.toml": '[toolchain]\nchannel = "nightly-2026-05-04"\n'})
+    files = parse_diff(new_file("a/src/lib.rs", RUST_FILE) + new_file("macros/src/lib.rs", RUST_FILE) + new_file("macros/tests/t.rs", RUST_FILE))
+    seen = []
+
+    def run(command, *, cwd, **kwargs):
+        folder = Path(cwd).relative_to(tmp_path).as_posix()
+        seen.append((Path(command[0]).name, command[1:3], folder))
+        version = ("clippy 0.1.97\n" if folder == "macros" else "clippy 0.1.100\n") if "--version" in command else ""
+        return subprocess.CompletedProcess(command, 0, stdout=version, stderr="")
+
+    monkeypatch.setattr(build_checks, "find_program", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(build_checks.subprocess, "run", run)
+    versions, error, _ = build_checks.prepare(str(tmp_path), files)
+    assert seen == [("rustup", ["component", "add"], "a"), ("cargo", ["clippy", "--version"], "a"),
+                    ("rustup", ["component", "add"], "macros"), ("cargo", ["clippy", "--version"], "macros")]
+    assert versions == {"clippy": "clippy 0.1.100, clippy 0.1.97"} and error == ""
 
 
 def test_the_disk_numbers_are_the_free_space_and_the_clone_and_its_target_folder(tmp_path):

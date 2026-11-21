@@ -1,0 +1,494 @@
+[
+ {
+  "repo": "clap-rs/clap",
+  "pr": 6545,
+  "head": "73251b9f44737c09efb372ea900f880fe1429e56",
+  "order": 0,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 2
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 17
+  },
+  "seconds": {
+   "Clippy": 2.1
+  },
+  "programs": {
+   "Clippy": 2.1
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 2.1,
+    "timed_out": false,
+    "built": 12,
+    "compiled": 12
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89443.6,
+   "clone_mb": 12.3,
+   "target_mb": 19.8
+  }
+ },
+ {
+  "repo": "clap-rs/clap",
+  "pr": 6535,
+  "head": "4eca4ba296361115f1aad89e5736d934924e8b18",
+  "order": 1,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 3
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 8
+  },
+  "seconds": {
+   "Clippy": 2.8
+  },
+  "programs": {
+   "Clippy": 2.9
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "clap_builder",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.3,
+    "timed_out": false,
+    "built": 10,
+    "compiled": 1
+   },
+   {
+    "program": "Clippy",
+    "folder": "clap_complete",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.4,
+    "timed_out": false,
+    "built": 5,
+    "compiled": 3
+   },
+   {
+    "program": "Clippy",
+    "folder": "clap_complete_nushell",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.2,
+    "timed_out": false,
+    "built": 6,
+    "compiled": 1
+   }
+  ],
+  "notes": [
+   "Not read by Clippy, past its limit of 3 crates: `clap_derive/src/lib.rs`, `clap_mangen/src/lib.rs`"
+  ],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89405.6,
+   "clone_mb": 12.3,
+   "target_mb": 56.6
+  }
+ },
+ {
+  "repo": "clap-rs/clap",
+  "pr": 6526,
+  "head": "a1b6be720e59248d8b783c1dfce76a355e170dd7",
+  "order": 2,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "seconds": {
+   "Clippy": 0.7
+  },
+  "programs": {
+   "Clippy": 0.7
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "clap_complete",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.7,
+    "timed_out": false,
+    "built": 5,
+    "compiled": 3
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89403.7,
+   "clone_mb": 12.5,
+   "target_mb": 58.3
+  }
+ },
+ {
+  "repo": "clap-rs/clap",
+  "pr": 6519,
+  "head": "9a0248c837b8c042985417fd442b353397603a1f",
+  "order": 3,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 3
+  },
+  "seconds": {
+   "Clippy": 1.4
+  },
+  "programs": {
+   "Clippy": 1.4
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "clap_complete",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.4,
+    "timed_out": false,
+    "built": 5,
+    "compiled": 4
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89385.7,
+   "clone_mb": 12.7,
+   "target_mb": 77.7
+  }
+ },
+ {
+  "repo": "clap-rs/clap",
+  "pr": 6482,
+  "head": "07c6fd2d7cef1601d0308d51dff9d695ff790bbc",
+  "order": 4,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "seconds": {
+   "Clippy": 0.7
+  },
+  "programs": {
+   "Clippy": 0.7
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "clap_mangen",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.7,
+    "timed_out": false,
+    "built": 6,
+    "compiled": 5
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89384.4,
+   "clone_mb": 12.8,
+   "target_mb": 78.8
+  }
+ },
+ {
+  "repo": "clap-rs/clap",
+  "pr": 6477,
+  "head": "dee8b8e4f07c092472d3f9131d34dd6f54ef60ea",
+  "order": 5,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "seconds": {
+   "Clippy": 0.3
+  },
+  "programs": {
+   "Clippy": 0.3
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "clap_complete_nushell",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.3,
+    "timed_out": false,
+    "built": 6,
+    "compiled": 2
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89383.9,
+   "clone_mb": 12.8,
+   "target_mb": 79.2
+  }
+ },
+ {
+  "repo": "clap-rs/clap",
+  "pr": 6468,
+  "head": "ecee8a4f862b1b97ce2c7db5bf806cfe394a55f6",
+  "order": 6,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 4
+  },
+  "seconds": {
+   "Clippy": 1.4
+  },
+  "programs": {
+   "Clippy": 1.4
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "clap_complete",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.4,
+    "timed_out": false,
+    "built": 5,
+    "compiled": 4
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89366.9,
+   "clone_mb": 13.0,
+   "target_mb": 97.5
+  }
+ },
+ {
+  "repo": "clap-rs/clap",
+  "pr": 6467,
+  "head": "eb39a0eb5f6a214f197e82781edfd7c186ca505c",
+  "order": 7,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 3
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 49
+  },
+  "seconds": {
+   "Clippy": 2.0
+  },
+  "programs": {
+   "Clippy": 2.1
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "clap_builder",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.3,
+    "timed_out": false,
+    "built": 10,
+    "compiled": 1
+   },
+   {
+    "program": "Clippy",
+    "folder": "clap_mangen",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.8,
+    "timed_out": false,
+    "built": 6,
+    "compiled": 3
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89349.3,
+   "clone_mb": 13.0,
+   "target_mb": 116.8
+  }
+ },
+ {
+  "repo": "clap-rs/clap",
+  "pr": 6465,
+  "head": "14d47fb7e555e7d17d8f5aba0358fc034a150c46",
+  "order": 8,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 4
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 11
+  },
+  "seconds": {
+   "Clippy": 0.7
+  },
+  "programs": {
+   "Clippy": 0.7
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "clap_builder",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.7,
+    "timed_out": false,
+    "built": 10,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89349.2,
+   "clone_mb": 13.0,
+   "target_mb": 116.9
+  }
+ },
+ {
+  "repo": "clap-rs/clap",
+  "pr": 6459,
+  "head": "2935d5a18948107e9f76f663efeab0a7f4c4ac83",
+  "order": 9,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.100 (0ef1bc3860 2026-11-09)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 3
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 55
+  },
+  "seconds": {
+   "Clippy": 1.4
+  },
+  "programs": {
+   "Clippy": 1.4
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.4,
+    "timed_out": false,
+    "built": 12,
+    "compiled": 4
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89332.2,
+   "clone_mb": 13.2,
+   "target_mb": 135.2
+  }
+ }
+]

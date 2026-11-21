@@ -102,6 +102,12 @@ CHECKS = {
     "go vet": (go_vet, "checks.go_vet", {"go vet": "go vet", "staticcheck": "staticcheck"}, "go.mod"),
     "Clippy": (clippy, "checks.clippy", {"Clippy": "clippy"}, "Cargo.toml"),
 }
+# What `prepare` runs in each module's or crate's folder before the build: the toolchain's version, which with
+# GOTOOLCHAIN=auto or a rust-toolchain file installs the one the folder names, and Clippy for it.
+SETUP = {
+    "go vet": [("go", ["go", "version"]), ("staticcheck", ["staticcheck", "-version"])],
+    "Clippy": [("", ["rustup", "component", "add", "clippy"]), ("clippy", ["cargo", "clippy", "--version"])],
+}
 # Clippy's lint group asked for besides `correctness`, whose lints the check doesn't keep.
 CLIPPY_ALSO = "clippy::suspicious"
 
@@ -193,19 +199,24 @@ def check_out(where: Path, head: str) -> bool:
 def prepare(worktree: str, files: list[FileDiff]) -> tuple[dict[str, str], str, float]:
     """The toolchains this checkout builds with, each installed first when
     the project names one, so its download isn't timed as the build: their
-    versions, what went wrong, and the seconds it took."""
+    versions, what went wrong, and the seconds it took. The steps run in each
+    module's or crate's folder the check will build, since a crate can name a
+    toolchain of its own (a `rust-toolchain.toml` beside its `Cargo.toml`)."""
     steps = []
-    if any(go_vet.wanted(file) for file in files):
-        steps += [("go", ["go", "version"]), ("staticcheck", ["staticcheck", "-version"])]
-    if any(clippy.wanted(file) for file in files):
-        steps += [("", ["rustup", "component", "add", "clippy"]), ("clippy", ["cargo", "clippy", "--version"])]
-    versions, errors, started = {}, [], time.monotonic()
-    for key, command in steps:
+    for name, (module, _, _, marker) in CHECKS.items():
+        targets = [file.path for file in files if file.status != "deleted" and not file.binary and file.added() and module.wanted(file)]
+        roots = sorted(root for root in tools.group_by_root(worktree, targets, marker) if root is not None)
+        for root in roots:
+            folder = os.path.join(worktree, *root.split("/")) if root else worktree
+            steps += [(folder, key, command) for key, command in SETUP[name]]
+    versions: dict[str, list[str]] = defaultdict(list)
+    errors, started = [], time.monotonic()
+    for folder, key, command in steps:
         program = find_program(command[0])
         if program is None:
             continue
         try:
-            done = subprocess.run([program, *command[1:]], cwd=worktree, env=tools.build_env(), capture_output=True, text=True,
+            done = subprocess.run([program, *command[1:]], cwd=folder, env=tools.build_env(), capture_output=True, text=True,
                                   encoding="utf-8", errors="replace", stdin=subprocess.DEVNULL, timeout=SETUP_SECONDS)
         except subprocess.TimeoutExpired:
             errors.append(f"`{' '.join(command)}` took longer than {SETUP_SECONDS} s")
@@ -213,8 +224,10 @@ def prepare(worktree: str, files: list[FileDiff]) -> tuple[dict[str, str], str, 
         if done.returncode != 0:
             errors.append(f"`{' '.join(command)}`: {tools.first_line(done.stderr or done.stdout)}")
         elif key:
-            versions[key] = (done.stdout.strip().splitlines() or [""])[0]
-    return versions, "; ".join(errors), round(time.monotonic() - started, 1)
+            version = (done.stdout.strip().splitlines() or [""])[0]
+            if version not in versions[key]:
+                versions[key].append(version)
+    return {key: ", ".join(found) for key, found in versions.items()}, "; ".join(errors), round(time.monotonic() - started, 1)
 
 
 # ── running the checks ───────────────────────────────────────────────────
@@ -310,10 +323,15 @@ def runs(worktree: str, calls: list[dict]) -> list[dict]:
 
 
 def error_line(text: str) -> str:
-    """The first line of a program's error output, leaving out what isn't an
-    error there: go vet's `# package` lines, and the JSON report it wrote to
-    stderr before Go 1.24 or so."""
-    return tools.first_line("\n".join(line for line in text.splitlines() if not line.lstrip().startswith(("{", "}", '"', "[", "]"))))
+    """The first line of a program's error output that says what went
+    wrong: its first `error` line when it has one, else the first that isn't
+    noise there. Noise is go vet's `# package` lines and the JSON report it
+    wrote to stderr before Go 1.24 or so, go's `go: downloading` lines, and
+    cargo's warnings about the manifest."""
+    lines = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith(("{", "}", '"', "[", "]", "#"))]
+    errors = [line for line in lines if line.lstrip().lower().startswith("error")]
+    useful = errors or [line for line in lines if not line.lstrip().startswith(("go: downloading ", "warning:"))]
+    return tools.first_line("\n".join(useful))
 
 
 def built(call: dict) -> dict:

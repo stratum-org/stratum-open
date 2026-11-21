@@ -1,0 +1,532 @@
+[
+ {
+  "repo": "nushell/nushell",
+  "pr": 19505,
+  "head": "30b9e5670ba9634c60c4d0f360caaf53acd15557",
+  "order": 0,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.97 (8bab26f4f6 2026-07-14)"
+  },
+  "setup_seconds": 10.6,
+  "files": {
+   "go vet": 0,
+   "Clippy": 3
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 67
+  },
+  "seconds": {
+   "Clippy": 118.9
+  },
+  "programs": {
+   "Clippy": 118.8
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 98.4,
+    "timed_out": false,
+    "built": 811,
+    "compiled": 811
+   },
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-cmd-lang",
+    "code": 0,
+    "stderr": "",
+    "seconds": 19.4,
+    "timed_out": false,
+    "built": 212,
+    "compiled": 97
+   },
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-engine",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.0,
+    "timed_out": false,
+    "built": 200,
+    "compiled": 1
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88386.3,
+   "clone_mb": 49.3,
+   "target_mb": 2972.1
+  }
+ },
+ {
+  "repo": "nushell/nushell",
+  "pr": 19497,
+  "head": "b97b20ca03b3913d66b723c184c2beedaa858036",
+  "order": 1,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.97 (8bab26f4f6 2026-07-14)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 13
+  },
+  "seconds": {
+   "Clippy": 35.0
+  },
+  "programs": {
+   "Clippy": 35.0
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-lsp",
+    "code": 0,
+    "stderr": "",
+    "seconds": 35.0,
+    "timed_out": false,
+    "built": 533,
+    "compiled": 117
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87910.9,
+   "clone_mb": 49.3,
+   "target_mb": 3504.9
+  }
+ },
+ {
+  "repo": "nushell/nushell",
+  "pr": 19486,
+  "head": "9d674d18d9d504a3978c4f82d3c85e3675b2d29e",
+  "order": 2,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.97 (8bab26f4f6 2026-07-14)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 93
+  },
+  "seconds": {
+   "Clippy": 11.0
+  },
+  "programs": {
+   "Clippy": 11.0
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-parser",
+    "code": 0,
+    "stderr": "",
+    "seconds": 11.0,
+    "timed_out": false,
+    "built": 191,
+    "compiled": 15
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87773.3,
+   "clone_mb": 49.3,
+   "target_mb": 3650.9
+  }
+ },
+ {
+  "repo": "nushell/nushell",
+  "pr": 19485,
+  "head": "c5126a1506022c275e54cc23ac63c20a2518193f",
+  "order": 3,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.97 (8bab26f4f6 2026-07-14)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 45
+  },
+  "seconds": {
+   "Clippy": 14.7
+  },
+  "programs": {
+   "Clippy": 14.7
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-command",
+    "code": 0,
+    "stderr": "",
+    "seconds": 14.7,
+    "timed_out": false,
+    "built": 559,
+    "compiled": 39
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87449.9,
+   "clone_mb": 49.4,
+   "target_mb": 4008.0
+  }
+ },
+ {
+  "repo": "nushell/nushell",
+  "pr": 19482,
+  "head": "21cad125a397794107e6751410ce422e950a9217",
+  "order": 4,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.97 (8bab26f4f6 2026-07-14)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 5
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 107
+  },
+  "seconds": {
+   "Clippy": 42.2
+  },
+  "programs": {
+   "Clippy": 42.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-table",
+    "code": 0,
+    "stderr": "",
+    "seconds": 11.5,
+    "timed_out": false,
+    "built": 201,
+    "compiled": 18
+   },
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-command",
+    "code": 0,
+    "stderr": "",
+    "seconds": 16.6,
+    "timed_out": false,
+    "built": 559,
+    "compiled": 18
+   },
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-explore",
+    "code": 0,
+    "stderr": "",
+    "seconds": 14.1,
+    "timed_out": false,
+    "built": 270,
+    "compiled": 55
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 86749.9,
+   "clone_mb": 49.6,
+   "target_mb": 4748.9
+  }
+ },
+ {
+  "repo": "nushell/nushell",
+  "pr": 19481,
+  "head": "b5a6b8b18caa1a2b16063ffc3872fb4d9ba4efdf",
+  "order": 5,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.97 (8bab26f4f6 2026-07-14)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 3
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 127
+  },
+  "seconds": {
+   "Clippy": 7.5
+  },
+  "programs": {
+   "Clippy": 7.6
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-cmd-base",
+    "code": 0,
+    "stderr": "",
+    "seconds": 3.5,
+    "timed_out": false,
+    "built": 192,
+    "compiled": 11
+   },
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-cmd-lang",
+    "code": 0,
+    "stderr": "",
+    "seconds": 3.8,
+    "timed_out": false,
+    "built": 212,
+    "compiled": 9
+   },
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-parser",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.3,
+    "timed_out": false,
+    "built": 191,
+    "compiled": 0
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 86498.6,
+   "clone_mb": 49.6,
+   "target_mb": 5016.6
+  }
+ },
+ {
+  "repo": "nushell/nushell",
+  "pr": 19479,
+  "head": "a11221c8006dadbeb6afc075807da7ad3d333321",
+  "order": 6,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.97 (8bab26f4f6 2026-07-14)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 2
+  },
+  "seconds": {
+   "Clippy": 18.2
+  },
+  "programs": {
+   "Clippy": 18.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-mcp",
+    "code": 0,
+    "stderr": "",
+    "seconds": 18.2,
+    "timed_out": false,
+    "built": 279,
+    "compiled": 91
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 86086.4,
+   "clone_mb": 49.6,
+   "target_mb": 5451.5
+  }
+ },
+ {
+  "repo": "nushell/nushell",
+  "pr": 19477,
+  "head": "17360a9a59cc22d37cb15cb752aaf83a7f46e519",
+  "order": 7,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.97 (8bab26f4f6 2026-07-14)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 3
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 398
+  },
+  "seconds": {
+   "Clippy": 11.2
+  },
+  "programs": {
+   "Clippy": 11.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-cli",
+    "code": 0,
+    "stderr": "",
+    "seconds": 11.2,
+    "timed_out": false,
+    "built": 526,
+    "compiled": 21
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 85798.2,
+   "clone_mb": 49.7,
+   "target_mb": 5757.1
+  }
+ },
+ {
+  "repo": "nushell/nushell",
+  "pr": 19471,
+  "head": "50c9e969eb79e068272413796ce304e33399657f",
+  "order": 8,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.97 (8bab26f4f6 2026-07-14)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 2
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 98
+  },
+  "seconds": {
+   "Clippy": 13.5
+  },
+  "programs": {
+   "Clippy": 13.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-cli",
+    "code": 0,
+    "stderr": "",
+    "seconds": 6.6,
+    "timed_out": false,
+    "built": 526,
+    "compiled": 12
+   },
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-protocol",
+    "code": 0,
+    "stderr": "",
+    "seconds": 6.9,
+    "timed_out": false,
+    "built": 199,
+    "compiled": 6
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 85577.5,
+   "clone_mb": 49.7,
+   "target_mb": 5976.7
+  }
+ },
+ {
+  "repo": "nushell/nushell",
+  "pr": 19470,
+  "head": "59aa0a877c70729617e7da09aad6d622a80d18d2",
+  "order": 9,
+  "error": "",
+  "toolchains": {
+   "clippy": "clippy 0.1.97 (8bab26f4f6 2026-07-14)"
+  },
+  "setup_seconds": 0.1,
+  "files": {
+   "go vet": 0,
+   "Clippy": 1
+  },
+  "lines": {
+   "go vet": 0,
+   "Clippy": 37
+  },
+  "seconds": {
+   "Clippy": 6.4
+  },
+  "programs": {
+   "Clippy": 6.4
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "Clippy",
+    "folder": "crates/nu-command",
+    "code": 0,
+    "stderr": "",
+    "seconds": 6.4,
+    "timed_out": false,
+    "built": 559,
+    "compiled": 11
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 85485.7,
+   "clone_mb": 49.7,
+   "target_mb": 6068.4
+  }
+ }
+]

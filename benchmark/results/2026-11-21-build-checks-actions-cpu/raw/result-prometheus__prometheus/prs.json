@@ -1,0 +1,552 @@
+[
+ {
+  "repo": "prometheus/prometheus",
+  "pr": 20405,
+  "head": "75b93c15808df327c99c65b1b71033cf7ba3f21b",
+  "order": 0,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 2,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 33.5
+  },
+  "programs": {
+   "go vet": 28.9,
+   "staticcheck": 4.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "go: downloading github.com/prometheus/client_golang v1.25.0",
+    "seconds": 28.9,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 4.5,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89093.9,
+   "clone_mb": 63.4,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "prometheus/prometheus",
+  "pr": 20404,
+  "head": "56be7191e8c08825dec2f8a6b844f6a60c277038",
+  "order": 1,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 2,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 2.3
+  },
+  "programs": {
+   "go vet": 1.6,
+   "staticcheck": 0.7
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "go: downloading github.com/google/go-cmp v0.7.0",
+    "seconds": 1.6,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.7,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 89081.3,
+   "clone_mb": 63.5,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "prometheus/prometheus",
+  "pr": 20401,
+  "head": "4ccab8f53788cdc4ce1652d69ac52edd9f544a02",
+  "order": 2,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 4,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 33.3
+  },
+  "programs": {
+   "go vet": 28.8,
+   "staticcheck": 4.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "go: downloading github.com/prometheus/otlptranslator v1.0.0",
+    "seconds": 28.8,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 4.5,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88079.5,
+   "clone_mb": 63.5,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "prometheus/prometheus",
+  "pr": 20400,
+  "head": "244f5f2fdaaf5351c97ce68d8872036ae8f3d73b",
+  "order": 3,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 6,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 1.1
+  },
+  "programs": {
+   "go vet": 0.5,
+   "staticcheck": 0.7
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.5,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 0.7,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88077.3,
+   "clone_mb": 63.5,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "prometheus/prometheus",
+  "pr": 20398,
+  "head": "99471d8c4f4d7f1ddb6123f37b935efa13614c9e",
+  "order": 4,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 0.4
+  },
+  "programs": {
+   "go vet": 0.2,
+   "staticcheck": 0.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.2,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.2,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88077.0,
+   "clone_mb": 63.6,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "prometheus/prometheus",
+  "pr": 20394,
+  "head": "1cc52e7fc5899fec8500efc40b8d5073a0efb536",
+  "order": 5,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 1.1
+  },
+  "programs": {
+   "go vet": 0.7,
+   "staticcheck": 0.4
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "go: downloading github.com/ovh/go-ovh v1.9.0",
+    "seconds": 0.7,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.4,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88073.5,
+   "clone_mb": 63.6,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "prometheus/prometheus",
+  "pr": 20392,
+  "head": "b9e0c5ce2588826d6b22162d216d601f564ad0c9",
+  "order": 6,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 3,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 1.1
+  },
+  "programs": {
+   "go vet": 0.3,
+   "staticcheck": 0.8
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.3,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 0.8,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 88071.0,
+   "clone_mb": 63.6,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "prometheus/prometheus",
+  "pr": 20345,
+  "head": "a3bd20c5f0f819d17e95eb4e582b8bdbe4089d5e",
+  "order": 7,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 5,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 36,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 229.6
+  },
+  "programs": {
+   "go vet": 197.4,
+   "staticcheck": 32.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "go: downloading github.com/KimMachineGun/automemlimit v1.0.0",
+    "seconds": 197.4,
+    "timed_out": false,
+    "built": 3
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 32.2,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 1,
+  "findings": 0,
+  "disk": {
+   "free_mb": 85138.2,
+   "clone_mb": 63.8,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "prometheus/prometheus",
+  "pr": 20335,
+  "head": "291191278284f95f0ea7b92dbb0da27ea080f5ab",
+  "order": 8,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 2,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 1.8
+  },
+  "programs": {
+   "go vet": 0.9,
+   "staticcheck": 1.0
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.9,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 1.0,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 85131.3,
+   "clone_mb": 63.9,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "prometheus/prometheus",
+  "pr": 20320,
+  "head": "90d27f4454eb1e84fd851139db6aaf67db20f152",
+  "order": 9,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 22,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 4.9
+  },
+  "programs": {
+   "go vet": 3.5,
+   "staticcheck": 1.4
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 3.5,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 1.4,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 85100.9,
+   "clone_mb": 64.1,
+   "target_mb": 0.0
+  }
+ }
+]

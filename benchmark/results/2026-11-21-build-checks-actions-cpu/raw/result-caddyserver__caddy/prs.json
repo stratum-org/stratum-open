@@ -1,0 +1,552 @@
+[
+ {
+  "repo": "caddyserver/caddy",
+  "pr": 8398,
+  "head": "0a7ba5246e872a755dfe9f9b025e43395322c006",
+  "order": 0,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 11,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 61.8
+  },
+  "programs": {
+   "go vet": 52.8,
+   "staticcheck": 9.0
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "go: downloading cel.dev/cel-go v0.32.0",
+    "seconds": 52.8,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 9.0,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87797.9,
+   "clone_mb": 13.4,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "caddyserver/caddy",
+  "pr": 8396,
+  "head": "ad262e794de39773f157a5a852fb60f5af337f33",
+  "order": 1,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 26,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 2.7
+  },
+  "programs": {
+   "go vet": 1.1,
+   "staticcheck": 1.6
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "go: downloading github.com/stretchr/testify v1.12.1",
+    "seconds": 1.1,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 1.6,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87776.4,
+   "clone_mb": 13.5,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "caddyserver/caddy",
+  "pr": 8394,
+  "head": "5c14ce7818e86fba4b92f2cb3a200f6694239e69",
+  "order": 2,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 14,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 0.9
+  },
+  "programs": {
+   "go vet": 0.4,
+   "staticcheck": 0.4
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.4,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 0.4,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87773.8,
+   "clone_mb": 13.5,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "caddyserver/caddy",
+  "pr": 8391,
+  "head": "64df0dbc607bee2a0946e65f27b87e1f3b210de4",
+  "order": 3,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 7,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 5.1
+  },
+  "programs": {
+   "go vet": 3.6,
+   "staticcheck": 1.5
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 3.6,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 1.5,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87722.1,
+   "clone_mb": 13.5,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "caddyserver/caddy",
+  "pr": 8388,
+  "head": "0a68b4e9c5d8e6c3597ef35a8fc000a91dc728b3",
+  "order": 4,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 13,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 0.2
+  },
+  "programs": {
+   "go vet": 0.1,
+   "staticcheck": 0.1
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.1,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.1,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87721.2,
+   "clone_mb": 13.5,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "caddyserver/caddy",
+  "pr": 8387,
+  "head": "c45b71dd4de4ecb6724e4d389c544417d55d814c",
+  "order": 5,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 31,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 2.2
+  },
+  "programs": {
+   "go vet": 0.4,
+   "staticcheck": 1.9
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.4,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 1.9,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87709.8,
+   "clone_mb": 13.5,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "caddyserver/caddy",
+  "pr": 8386,
+  "head": "372d9acd9374b2c2571758014b0b30888a73dada",
+  "order": 6,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 6,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 3.7
+  },
+  "programs": {
+   "go vet": 2.5,
+   "staticcheck": 1.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "go: downloading github.com/pires/go-proxyproto v0.15.0",
+    "seconds": 2.5,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 1.2,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87674.0,
+   "clone_mb": 13.6,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "caddyserver/caddy",
+  "pr": 8380,
+  "head": "a4a74a88505de1b9267f9f2f519b9013865c2cb0",
+  "order": 7,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 18,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 7.3
+  },
+  "programs": {
+   "go vet": 5.0,
+   "staticcheck": 2.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 5.0,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 2.2,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87600.8,
+   "clone_mb": 13.6,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "caddyserver/caddy",
+  "pr": 8379,
+  "head": "51deb7be2b8dfae4f8c501c12836adf19cb6d666",
+  "order": 8,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 19,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 5.9
+  },
+  "programs": {
+   "go vet": 4.2,
+   "staticcheck": 1.7
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 4.2,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 1.7,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87538.9,
+   "clone_mb": 13.6,
+   "target_mb": 0.0
+  }
+ },
+ {
+  "repo": "caddyserver/caddy",
+  "pr": 8378,
+  "head": "73aa04426e57588192a1b755654e0608c114e50f",
+  "order": 9,
+  "error": "",
+  "toolchains": {
+   "go": "go version go1.27.4 linux/amd64",
+   "staticcheck": "staticcheck 2026.2.2 (0.8.2)"
+  },
+  "setup_seconds": 0.0,
+  "files": {
+   "go vet": 1,
+   "Clippy": 0
+  },
+  "lines": {
+   "go vet": 45,
+   "Clippy": 0
+  },
+  "seconds": {
+   "go vet": 1.6
+  },
+  "programs": {
+   "go vet": 0.4,
+   "staticcheck": 1.2
+  },
+  "timed_out": [],
+  "runs": [
+   {
+    "program": "go vet",
+    "folder": ".",
+    "code": 0,
+    "stderr": "",
+    "seconds": 0.4,
+    "timed_out": false,
+    "built": 1
+   },
+   {
+    "program": "staticcheck",
+    "folder": ".",
+    "code": 1,
+    "stderr": "",
+    "seconds": 1.2,
+    "timed_out": false
+   }
+  ],
+  "notes": [],
+  "issues": 0,
+  "findings": 0,
+  "disk": {
+   "free_mb": 87529.6,
+   "clone_mb": 13.6,
+   "target_mb": 0.0
+  }
+ }
+]

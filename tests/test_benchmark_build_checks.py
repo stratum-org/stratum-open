@@ -54,23 +54,42 @@ def test_staticcheck_runs_with_every_sa_check_while_the_check_still_leaves_the_d
     assert [f.rule for f in result["findings"]] == ["staticcheck/SA4017"]
 
 
-def test_clippy_issues_are_found_by_their_name_from_the_workspace_root(monkeypatch, tmp_path):
+def test_clippy_also_reports_its_suspicious_lints_found_by_their_name_from_the_workspace_root(monkeypatch, tmp_path):
     installed(monkeypatch, "cargo")
     write(tmp_path, {"Cargo.toml": '[workspace]\nmembers = ["crates/a"]\n', "Cargo.lock": "", "crates/a/Cargo.toml": "[package]\n",
                      "crates/a/src/lib.rs": RUST_FILE})
     path = "crates/a/src/lib.rs"
+    seen = []
     fake_run(monkeypatch, (0, "\n".join([
         clippy_message(path, 3, "clippy::eq_op"),
-        clippy_message(path, 3, "clippy::a_newer_lint", "a lint CORRECTNESS doesn't list"),
+        clippy_message(path, 3, "clippy::suspicious_else_formatting", "a suspicious lint, which the check doesn't keep"),
         clippy_message(path, 3, "unused_variables", "rustc's own warning, not Clippy's"),
         clippy_message(path, 1, "clippy::eq_op", "a line the PR didn't add"),
-    ]), ""))
+    ]), ""), seen=seen)
     files = parse_diff(edit(path, RUST_FILE, 3))
     result = build_checks.measure(str(tmp_path), files)
+    command = seen[0]["command"]
+    assert command[command.index("--") + 1:] == ["-A", "clippy::all", "--force-warn", "clippy::correctness",
+                                                 "--force-warn", "clippy::suspicious", "--cap-lints", "warn"]
     rows = build_checks.issues(str(tmp_path), files, result["calls"])
     assert [(r["tool"], r["code"], r["path"], r["line"], r["kept"]) for r in rows] == [
-        ("clippy", "eq_op", path, 3, "yes"), ("clippy", "a_newer_lint", path, 3, "no")]
+        ("clippy", "eq_op", path, 3, "yes"), ("clippy", "suspicious_else_formatting", path, 3, "no")]
     assert [f.rule for f in result["findings"]] == ["clippy/eq_op"] and list(result["seconds"]) == ["Clippy"]
+
+
+def test_only_the_files_under_a_module_a_program_ran_in_count_as_read(monkeypatch, tmp_path):
+    installed(monkeypatch, "go")
+    monkeypatch.setattr(go_vet, "MAX_MODULES", 1)
+    write(tmp_path, {"a/go.mod": "module a\n", "b/go.mod": "module b\n"})
+    files = parse_diff(new_file("a/x.go", GO_FILE) + new_file("a/y.go", GO_FILE) + new_file("b/z.go", GO_FILE) + new_file("tools/t.go", GO_FILE))
+    fake_run(monkeypatch, (0, "", ""))
+    result = build_checks.measure(str(tmp_path), files)
+    # b is past the limit of one module, and tools/ has no go.mod above it.
+    assert [f.path for f in build_checks.read_by(str(tmp_path), files, "go vet", result["calls"])] == ["a/x.go", "a/y.go"]
+    for call in result["calls"]:
+        call["timed_out"] = True
+    assert build_checks.read_by(str(tmp_path), files, "go vet", result["calls"]) == []
+    assert build_checks.read_by(str(tmp_path), files, "Clippy", result["calls"]) == []
 
 
 def test_the_checks_get_the_runs_time_limit_and_their_own_back_after(monkeypatch, tmp_path):
@@ -157,8 +176,11 @@ def test_run_writes_every_issue_and_the_build_times_and_keeps_the_marks(monkeypa
     worktree = tmp_path / "repos" / "acme__widget"
     output = vet_report(worktree, ("printf", "a.go", 7, "wrong type"), ("composites", "a.go", 7, "unkeyed fields"))
     prs, out = [{"repo": "acme/widget", "pr": 5, "head": shas[5]}], tmp_path / "run"
-    fake_run(monkeypatch, (0, output, ""))
-    build_checks._run(prs, tmp_path / "repos", out, 60)
+    seen = []
+    fake_run(monkeypatch, (0, output, ""), seen=seen)
+    monkeypatch.chdir(tmp_path)
+    build_checks._run(prs, Path("repos"), out, 60)  # a relative folder, as in the README's command
+    assert Path(seen[0]["cwd"]).is_absolute() and Path(seen[0]["cwd"]).samefile(worktree)
     rows = read(out / "issues.csv")
     assert [(r["case"], r["code"], r["kept"]) for r in rows] == [("acme/widget#5", "printf", "yes"), ("acme/widget#5", "composites", "no")]
     assert [(r["case"], r["rule"], r["line"]) for r in read(out / "kept.csv")] == [("acme/widget#5", "go-vet/printf", "7")]
@@ -170,7 +192,7 @@ def test_run_writes_every_issue_and_the_build_times_and_keeps_the_marks(monkeypa
     rows[1]["verdict"], rows[1]["note"] = "wrong", "a style matter"
     bench._write(out / "issues.csv", build_checks.ISSUE_COLUMNS, rows)
     fake_run(monkeypatch, (0, output, ""))
-    build_checks._run(prs, tmp_path / "repos", out, 60)
+    build_checks._run(prs, Path("repos"), out, 60)
     assert [(r["verdict"], r["note"]) for r in read(out / "issues.csv")] == [("", ""), ("wrong", "a style matter")]
 
 

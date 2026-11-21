@@ -6,9 +6,16 @@
 # back as the build-results artifact, to mark by hand and commit under
 # benchmark/results/.
 #
-# Building a project runs its code (build scripts, procedural macros, cgo), so
-# the jobs that build hold no token: the PRs' diffs are fetched first, by a job
-# that builds nothing, and every checkout is made without credentials.
+# Building a project runs its code (build scripts, procedural macros, cgo, and
+# whatever their dependencies do). So it runs only inside a container made from
+# benchmark/Dockerfile, never on the runner itself, which holds the runner's own
+# token (it can write this repository's Actions cache) and gives passwordless
+# sudo. The container gets no token, no Docker socket and no extra privileges.
+# It sees two folders of the runner: the PRs' diffs, read-only, and a folder for
+# its results. The diffs are fetched first, by a job that builds nothing. Once
+# the container is gone, all that's kept of the build is issues.csv, kept.csv
+# and prs.json, and only if each is a plain file: the upload and the collect
+# job only read them as data.
 name: Build-check benchmark
 
 on:
@@ -75,41 +82,41 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.12"
-      - run: python -m pip install --quiet .
-      - if: matrix.language == 'go'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: stable
-          cache: false  # the first PR of each project is built with nothing cached, as on a fresh runner
-      - if: matrix.language == 'go'
-        name: staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@2026.2.2
-      - if: matrix.language == 'rust'
-        name: Rust with Clippy
-        # rustup is on GitHub's runners. A project that names its own toolchain gets it installed by build_checks.py.
-        run: |
-          rustup toolchain install stable --profile minimal --component clippy
-          rustup default stable
-      - name: Versions
-        run: |
-          go version
-          if command -v staticcheck; then staticcheck -version; fi
-          cargo clippy --version || true
+      - name: Build the image the projects are built in
+        run: docker build --pull -f benchmark/Dockerfile -t stratum-build-checks .
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: build-cache
           path: benchmark/.cache/
-      - name: Check out each PR and build it
+      - name: Versions
+        run: docker run --rm stratum-build-checks sh -c 'go version; staticcheck -version; cargo clippy --version; python --version'
+      - name: Check out each PR and build it, in the container
+        timeout-minutes: 310  # leaves the job time to keep and upload what it did
         env:
           REPO: ${{ matrix.repo }}
-          OUT: raw/${{ matrix.safe }}
-        run: python benchmark/build_checks.py run --repo "$REPO" --repos "$RUNNER_TEMP/repos" --out "$OUT"
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          docker run --rm --name build-checks --security-opt no-new-privileges \
+            -v "$GITHUB_WORKSPACE/benchmark/.cache:/src/benchmark/.cache:ro" -v "$RUNNER_TEMP/out:/out" \
+            stratum-build-checks python benchmark/build_checks.py run --repo "$REPO" --repos /work/repos --out /out
+      - name: Keep only the result files
+        if: always()
+        env:
+          KEEP: raw/${{ matrix.safe }}
+        run: |
+          # The container must be gone first, so nothing can change a file between its test and its copy.
+          docker rm -f build-checks > /dev/null 2>&1 || true
+          mkdir -p "$KEEP"
+          for name in issues.csv kept.csv prs.json; do
+            file="$RUNNER_TEMP/out/$name"
+            if [ -f "$file" ] && [ ! -L "$file" ]; then cp -- "$file" "$KEEP/$name"; fi
+          done
+          ls -l "$KEEP"
       - name: Disk
         if: always()
-        run: df -h / "$RUNNER_TEMP"
+        run: |
+          df -h /
+          docker system df
       - if: always()  # a stopped job's partial results are still worth keeping
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

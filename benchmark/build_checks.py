@@ -13,11 +13,13 @@ not, with how long each build took.
     # mark the verdict column of issues.csv: right | wrong | unsure
     python benchmark/build_checks.py score benchmark/results/<name>
 
-Building a project runs its code (build scripts, procedural macros, cgo), so
-run it only where that's fine. The **Build-check benchmark** workflow runs it
-on GitHub's runners, one job per project, in jobs that hold no token. It
-needs Linux, `go` and `staticcheck` for the Go projects, `cargo clippy` for
-the Rust ones.
+Building a project runs its code (build scripts, procedural macros, cgo, and
+whatever their dependencies do), so run it only where that's fine. The
+**Build-check benchmark** workflow runs `run` on GitHub's runners, one job
+per project, inside a container made from benchmark/Dockerfile (Go,
+staticcheck, Rust with Clippy, Python), away from the runner and its
+credentials. It needs Linux, `go` and `staticcheck` for the Go projects,
+and `cargo clippy` for the Rust ones.
 
 `fetch` caches each PR's diff in benchmark/.cache. It's the one step that
 needs a GitHub token, so `run` can go without one.
@@ -32,17 +34,21 @@ rust-toolchain file) is installed before the build is timed. The checks run
 with a time limit of `--timeout` (an hour) instead of their own (300 s for go
 vet and staticcheck, 600 s for Clippy), so a slow build is measured rather
 than cut off; `score` counts the builds that would have run past a review's
-limit. staticcheck runs with every SA check, the ones the check leaves out
-(DROPPED_SA) included, so those are measured too; the check's own reading of
-its output still leaves them out. It writes:
+limit.
+
+The programs are asked for more than the checks ask for, from the same build,
+so what the checks leave out is measured too: staticcheck runs with every SA
+check, DROPPED_SA's included, and Clippy with its `suspicious` group as well
+as `correctness`. The checks' own reading of the output still leaves those
+out, so kept.csv is what a review would get. It writes:
 
 - issues.csv: one row per issue on a line the PR adds, in a file the check
-  reads, with whether the check keeps it. It keeps the marks when it's
+  read, with whether the check keeps it. It keeps the marks when it's
   repeated.
 - kept.csv: the checks' findings, as a review gets them.
-- prs.json: for each PR, the files and added lines each check read, the
-  toolchains, the seconds each tool took, and the checks' coverage lines (a
-  build that failed, say).
+- prs.json: for each PR, the files and added lines each check read (those
+  under a module or crate it ran on), the toolchains, the seconds each
+  program took, and the checks' coverage lines (a build that failed, say).
 
 `score` reads every prs.json under the folder, with the issues.csv beside it,
 and writes summary.md: what each check kept, with the marks, the build times
@@ -79,11 +85,13 @@ SOURCE = "https://github.com/{repo}.git"
 TIMEOUT_SECONDS = 3600
 SETUP_SECONDS = 900
 # Each check by the name its coverage lines use: its module, its policy key, the programs it runs (as tools.run names
-# them) and which of them a row of issues.csv names.
+# them, each with the name a row of issues.csv gives it), and the file at a module's or crate's root.
 CHECKS = {
-    "go vet": (go_vet, "checks.go_vet", {"go vet": "go vet", "staticcheck": "staticcheck"}),
-    "Clippy": (clippy, "checks.clippy", {"Clippy": "clippy"}),
+    "go vet": (go_vet, "checks.go_vet", {"go vet": "go vet", "staticcheck": "staticcheck"}, "go.mod"),
+    "Clippy": (clippy, "checks.clippy", {"Clippy": "clippy"}, "Cargo.toml"),
 }
+# Clippy's lint group asked for besides `correctness`, whose lints the check doesn't keep.
+CLIPPY_ALSO = "clippy::suspicious"
 
 
 def main() -> int:
@@ -190,8 +198,9 @@ def prepare(worktree: str, files: list[FileDiff]) -> tuple[dict[str, str], str, 
 @contextmanager
 def recording(calls: list[dict], timeout: float) -> Iterator[None]:
     """While it lasts, each program the checks run is written down in
-    `calls` (its folder, exit code, output and seconds), staticcheck runs
-    with every SA check, and both checks may take `timeout` seconds."""
+    `calls` (its folder, exit code, output and seconds), it's asked for
+    more than the check asks for (`widened`), and both checks may take
+    `timeout` seconds."""
     real = tools.run
 
     def run(command: list[str], *, cwd: str, timeout: float, name: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
@@ -217,11 +226,16 @@ def recording(calls: list[dict], timeout: float) -> Iterator[None]:
 
 
 def widened(command: list[str], name: str) -> list[str]:
-    """staticcheck's command with every SA check, DROPPED_SA's included."""
-    if name != "staticcheck" or "-checks" not in command:
-        return command
-    at = command.index("-checks") + 1
-    return [*command[:at], "SA*", *command[at + 1:]]
+    """A program's command asking for what the check leaves out as well:
+    staticcheck's every SA check, DROPPED_SA's included, and Clippy's
+    `suspicious` lints next to its `correctness` ones."""
+    if name == "staticcheck" and "-checks" in command:
+        at = command.index("-checks") + 1
+        return [*command[:at], "SA*", *command[at + 1:]]
+    if name == "Clippy" and "clippy::correctness" in command:
+        at = command.index("clippy::correctness") + 1
+        return [*command[:at], "--force-warn", CLIPPY_ALSO, *command[at:]]
+    return command
 
 
 def measure(worktree: str, files: list[FileDiff], timeout: float = TIMEOUT_SECONDS) -> dict:
@@ -229,7 +243,7 @@ def measure(worktree: str, files: list[FileDiff], timeout: float = TIMEOUT_SECON
     `timeout` seconds each: their findings and coverage lines, every program
     they ran, and the seconds each check took (for those that ran one)."""
     out: dict = {"findings": [], "notes": [], "calls": [], "seconds": {}}
-    for name, (module, _, _) in CHECKS.items():
+    for name, (module, _, _, _) in CHECKS.items():
         calls: list[dict] = []
         with recording(calls, timeout):
             started = time.monotonic()
@@ -246,8 +260,8 @@ def issues(worktree: str, files: list[FileDiff], calls: list[dict]) -> list[dict
     in a file its check reads, whether the check keeps it or not."""
     rows = []
     for call in calls:
-        check = next(name for name, (_, _, programs) in CHECKS.items() if call["name"] in programs)
-        module, _, programs = CHECKS[check]
+        check = next(name for name, (_, _, programs, _) in CHECKS.items() if call["name"] in programs)
+        module, _, programs, _ = CHECKS[check]
         added = {file.path: dict(file.added()) for file in files
                  if file.status != "deleted" and not file.binary and module.wanted(file)}
         for code, level, paths, line, end, message, kept in reported(worktree, call):
@@ -259,6 +273,19 @@ def issues(worktree: str, files: list[FileDiff], calls: list[dict]) -> list[dict
                          "text": added[path][at].strip()[:200], "message": " ".join(message.split())[:300],
                          "kept": "yes" if kept else "no", "verdict": "", "note": ""})
     return rows
+
+
+def read_by(worktree: str, files: list[FileDiff], name: str, calls: list[dict]) -> list[FileDiff]:
+    """The PR's files check `name` read: those it wants under a module or
+    crate where one of its programs ran to the end. A file with no root
+    above it, past the limit of roots, or past the time limit wasn't read."""
+    module, _, programs, marker = CHECKS[name]
+    wanted = [file for file in files if file.status != "deleted" and not file.binary and file.added() and module.wanted(file)]
+    ran = {os.path.normcase(os.path.realpath(call["cwd"])) for call in calls if call["name"] in programs and not call["timed_out"]}
+    groups = tools.group_by_root(worktree, [file.path for file in wanted], marker)
+    read = {path for root, paths in groups.items() if root is not None
+            and os.path.normcase(os.path.realpath(os.path.join(worktree, *root.split("/")) if root else worktree)) in ran for path in paths}
+    return [file for file in wanted if file.path in read]
 
 
 def reported(worktree: str, call: dict) -> Iterator[tuple[str, str, list[str], int, int, str, bool]]:
@@ -330,6 +357,7 @@ def _clippy(worktree: str, call: dict) -> Iterator[tuple]:
 
 def _run(prs: list[dict], repos: Path, out: Path, timeout: float) -> int:
     out.mkdir(parents=True, exist_ok=True)
+    repos = repos.resolve()  # the checks join the worktree to the paths they hand a program, which runs in it
     marks = {_key(row): row for row in _read(out / "issues.csv")}
     rows, findings, listed = [], [], []
 
@@ -369,8 +397,7 @@ def _run(prs: list[dict], repos: Path, out: Path, timeout: float) -> int:
             for finding in result["findings"]:
                 findings.append({"case": case, "rule": finding.rule, "severity": finding.severity, "path": finding.path,
                                  "line": finding.line_start or "", "title": finding.title})
-            read = {name: [file for file in files if file.status != "deleted" and not file.binary and file.added() and module.wanted(file)]
-                    for name, (module, _, _) in CHECKS.items()}
+            read = {name: read_by(str(where), files, name, result["calls"]) for name in CHECKS}
             programs: dict[str, float] = defaultdict(float)
             for call in result["calls"]:
                 programs[call["name"]] += call["seconds"]
@@ -407,7 +434,7 @@ def scores(out: Path) -> list[dict]:
     builds that would have run past a review's time limit."""
     prs, rows = load(out)
     table = []
-    for name, (module, setting, programs) in CHECKS.items():
+    for name, (module, setting, programs, _) in CHECKS.items():
         ran = [p for p in prs if name in p.get("seconds", {})]
         kept = [row for row in rows if row["kept"] == "yes" and row["tool"] in programs.values()]
         table.append({
@@ -429,7 +456,7 @@ def build_times(prs: list[dict]) -> list[dict]:
     """Per project and check: the seconds of its first build, with nothing
     cached, and of the others, which reused what the ones before had built."""
     table = []
-    for name, (module, _, _) in CHECKS.items():
+    for name, (module, _, _, _) in CHECKS.items():
         by_repo: dict[str, list[dict]] = defaultdict(list)
         for p in prs:
             if name in p.get("seconds", {}):

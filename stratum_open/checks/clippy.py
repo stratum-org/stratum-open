@@ -23,7 +23,9 @@ rewrites one; without, cargo writes one as it builds, and it's removed after.
 
 On 59 merged PRs of six Rust projects, each built at its head
 (benchmark/results/2026-11-21-build-checks-actions-cpu), the `correctness`
-and `suspicious` lints reported nothing on the 2,839 lines they add.
+and `suspicious` lints reported nothing on the 2,839 lines they add, so the
+check raised no false alarm there; how many real bugs it catches isn't
+measured yet.
 """
 
 from __future__ import annotations

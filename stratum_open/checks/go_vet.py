@@ -24,7 +24,9 @@ the PR adds can't hide one, and a finding on such a line says so.
 On 60 merged PRs of six Go projects, each built at its head
 (benchmark/results/2026-11-21-build-checks-actions-cpu), go vet and every SA
 check reported one issue on the 987 lines they add: SA1019 on a deprecated
-name, true but harmless, which is why it's left out. The check kept nothing.
+name, true but harmless, which is why it's left out. The check kept nothing,
+so it raised no false alarm there; how many real bugs it catches isn't
+measured yet.
 """
 
 from __future__ import annotations

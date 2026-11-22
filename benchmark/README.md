@@ -145,7 +145,7 @@ a container made from [Dockerfile](Dockerfile), away from the runner and its cre
 
 On the 21 Nov run ([2026-11-21-build-checks-actions-cpu](results/2026-11-21-build-checks-actions-cpu/notes.md)), 119 of the PRs
 were built (one is gone from GitHub):
-- **What the checks reported:** nothing on the 987 lines 60 Go PRs add, or on the 2,839 lines 59 Rust PRs add.
+- **What the checks reported:** nothing on the 987 lines 60 Go PRs add, or on the 2,839 lines 59 Rust PRs add. So they raised no false alarm there. These are merged PRs, so how many real bugs they catch isn't measured.
 - **What the programs reported, kept or not:** one issue in all, staticcheck's SA1019 (a deprecated name) on a Prometheus PR. It's true but harmless, and it's the reason SA1019 is left out.
 - **Build time:** a project's first PR, with nothing cached, took 22 to 62 s for Go and 2 to 119 s for Rust. The rest took a median of 1 to 14 s, and none came near the checks' time limits.
 

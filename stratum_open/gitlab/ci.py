@@ -93,8 +93,12 @@ def _run(env: Mapping[str, str], gl: GitLab, iid: int, *, post: bool) -> int:
         checkout=checkout, history_ref=checkout_ref(checkout, default_branch) if checkout else "HEAD",
         lookup=PackageLookup(), own_checks=tuple(name for name in (env.get("CI_JOB_NAME"), env.get("STRATUM_JOB_NAME")) if name),
     )
+    pull = gl.pull(iid)
+    if pull.get("draft") and policy.review.skip_drafts:
+        print("Draft MR: Stratum reviews it on the next push after it's marked ready, or in a pipeline you run.")
+        return 0
     # GitLab CI doesn't say what happened to the MR, only that a pipeline runs for it, so review.events doesn't apply.
-    reason = skip_reason(gl.pull(iid), None, policy)
+    reason = skip_reason(pull, None, policy)
     if reason:
         print(reason)
         return 0

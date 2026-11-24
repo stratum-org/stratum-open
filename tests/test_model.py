@@ -99,3 +99,29 @@ def test_parameter_sizes():
     assert _billions("8x7B") == 56
     assert _billions("500M") == 0.5
     assert _billions("") is None
+
+
+@pytest.mark.parametrize("policy, env", [
+    ("review:\n  endpoint: off\n", {}),  # YAML reads an unquoted `off` as false
+    ("review:\n  endpoint: \"off\"\n", {}),
+    ("review:\n  endpoint: \" OFF \"\n", {}),
+    ("", {"STRATUM_MODEL_ENDPOINT": "off"}),  # the Action's `model-endpoint: off`, or the App's environment
+    # The policy's `off` holds against the environment's server: under the App, whose operator always sets
+    # STRATUM_MODEL_ENDPOINT, a repo could otherwise never keep its code from the model.
+    ("review:\n  endpoint: off\n", {"STRATUM_MODEL_ENDPOINT": "http://gpu.example:8000/v1"}),
+    ("review:\n  endpoint: http://gpu.example:8000/v1\n", {"STRATUM_MODEL_ENDPOINT": "off"}),
+])
+def test_an_endpoint_of_off_builds_no_model(policy, env):
+    from stratum_open.model import model_from_policy
+    from stratum_open.policy import parse_policy
+    parsed = parse_policy(policy)
+    assert parsed.errors == () and model_from_policy(parsed, env=env) is None
+
+
+def test_any_other_endpoint_still_builds_a_model_with_the_environment_first():
+    from stratum_open.model import model_from_policy
+    from stratum_open.policy import parse_policy
+    policy = parse_policy("review:\n  endpoint: http://gpu.example:8000/v1\n")
+    assert model_from_policy(policy, env={}).endpoint == "http://gpu.example:8000/v1"
+    assert model_from_policy(policy, env={"STRATUM_MODEL_ENDPOINT": "http://localhost:11434/v1"}).endpoint == "http://localhost:11434/v1"
+    assert model_from_policy(parse_policy(""), env={"STRATUM_MODEL_ENDPOINT": ""}).endpoint == "http://localhost:11434/v1"

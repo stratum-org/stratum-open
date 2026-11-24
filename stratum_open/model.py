@@ -256,14 +256,26 @@ def _shown(endpoint: str) -> str:
     return f"{url.scheme}://{url.netloc.rpartition('@')[2]}{url.path}"
 
 
-def model_from_policy(policy: Policy, env: Mapping[str, str] = os.environ) -> Model:
+def model_off(policy: Policy, env: Mapping[str, str] = os.environ) -> bool:
+    """Whether the policy or the environment sets the endpoint to `off`, for
+    the checks alone. Either one is enough: the environment's server wins
+    over the policy's otherwise, but under the App, whose operator always
+    sets one, a repo's `off` would then never keep its code from the model."""
+    return any((endpoint or "").strip().lower() == "off"
+               for endpoint in (policy.review.endpoint, env.get("STRATUM_MODEL_ENDPOINT")))
+
+
+def model_from_policy(policy: Policy, env: Mapping[str, str] = os.environ) -> Model | None:
     """The policy names the model; the environment can point at a different
     server (the Action's own Ollama, or a GPU box) and carries the API key,
     which never goes in the policy file. A model whose family needs its own
     reasoning level (gpt-oss) gets it here too, for the commands that call it
-    without a review."""
+    without a review. None when the endpoint is `off`: every caller then runs
+    the checks only, as `review --no-model` does."""
     from stratum_open.profiles import for_model
 
+    if model_off(policy, env):
+        return None
     endpoint = env.get("STRATUM_MODEL_ENDPOINT") or policy.review.endpoint
     name = env.get("STRATUM_MODEL_NAME") or policy.model_name
     api_key = env.get("STRATUM_MODEL_API_KEY") or None

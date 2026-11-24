@@ -18,7 +18,9 @@ inputs:
       Leave empty to use the endpoint in .stratum/policy.yml (or model-endpoint).
     default: ""
   model-endpoint:
-    description: An OpenAI-compatible endpoint to use instead of the policy file's, e.g. a GPU box your project runs.
+    description: >-
+      An OpenAI-compatible endpoint to use instead of the policy file's, e.g. a GPU box your project runs, or off
+      to run the checks only. With ollama-model set, this is ignored.
     default: ""
   model-name:
     description: The model to ask at that endpoint, instead of the policy file's.

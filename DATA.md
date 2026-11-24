@@ -130,7 +130,8 @@ time.
 - **GitHub API calls:** reading the PR, its diff and the repo history; posting
   comments, labels, the check run and the triage queue issue.
 - **The model endpoint in the policy file.** With `model: local`, the default,
-  that's a server the maintainers run, so code stays with them.
+  that's a server the maintainers run, so code stays with them. With
+  `review.endpoint: off`, nothing goes to a model.
 - **Package registries** (PyPI, npm, crates.io): only the names of
   dependencies a PR adds, to check how new they are.
   `dependencies.registry_lookup: false` turns this off.

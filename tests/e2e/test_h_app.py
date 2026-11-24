@@ -410,9 +410,10 @@ def test_unusable_database_fails_fast(tmp_path, monkeypatch):
     assert "Couldn't open the database" in str(stop.value)
 
 
-def test_the_whole_app_flow_over_http_against_the_fakes(fake_github, fake_model, tmp_path, monkeypatch):
-    """A signed webhook reaches a real worker thread, which reviews the PR on
-    the fake GitHub with the fake model and records the job."""
+def _review_through_the_app(fake_github, fake_model, tmp_path, monkeypatch, logs: list[str]) -> Server:
+    """A signed webhook for PR 7, reviewed by a real worker thread on the fake
+    GitHub, with the fake model as the server's endpoint; returns once the
+    job's row is written."""
     try:
         from cryptography.hazmat.primitives import serialization
         from cryptography.hazmat.primitives.asymmetric import rsa
@@ -420,22 +421,42 @@ def test_the_whole_app_flow_over_http_against_the_fakes(fake_github, fake_model,
         pytest.skip("cryptography (the `app` extra) isn't installed")
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048).private_bytes(
         serialization.Encoding.PEM, serialization.PrivateFormat.TraditionalOpenSSL, serialization.NoEncryption()).decode()
-    fake_github.add_pull(7, diff=DIFF)
-    fake_model.queue(Response.ok(json_reply([finding("app/users.py", SQL_LINE, line=5)])))
-    logs: list[str] = []
     monkeypatch.setattr(Server, "checkout", lambda self, repo, token, branch, window_days: None)  # no clone of github.com in a test
     server = Server(AppAuth("1", key, api=fake_github.url), SECRET.decode(), SQLiteStorage(str(tmp_path / "s.db")), str(tmp_path / "repos"),
                     env={"STRATUM_MODEL_ENDPOINT": fake_model.url}, workers=1, log=logs.append)
     status, data = call(server, pr_event(action="opened"))
     assert (status, data) == ("202 Accepted", {"queued": True})
     deadline = time.monotonic() + 30
-    # The job row is written after review_pull returns, which is after the check run; waiting for it covers every assert below.
+    # The job row is written after review_pull returns, which is after the check run; waiting for it covers every assert after this.
     while not any(job["event"] == "review" for job in server.storage.export("acme/widget")["jobs"]) and time.monotonic() < deadline:
         time.sleep(0.05)
+    return server
+
+
+def test_the_whole_app_flow_over_http_against_the_fakes(fake_github, fake_model, tmp_path, monkeypatch):
+    """A signed webhook reaches a real worker thread, which reviews the PR on
+    the fake GitHub with the fake model and records the job."""
+    fake_github.add_pull(7, diff=DIFF)
+    fake_model.queue(Response.ok(json_reply([finding("app/users.py", SQL_LINE, line=5)])))
+    logs: list[str] = []
+    server = _review_through_the_app(fake_github, fake_model, tmp_path, monkeypatch, logs)
     assert_contract(fake_github, number=7, head=HEAD, logs=logs)
     assert {f["title"] for f in server.storage.latest_findings("acme/widget", 7)} >= {"Unknown id"}
     assert server.storage.export("acme/widget")["jobs"][-1]["outcome"] == "published"
     assert fake_github.requests_to("POST", r"/app/installations/1/access_tokens")
+
+
+def test_a_repo_whose_policy_turns_the_model_off_gets_the_checks_from_the_app(fake_github, fake_model, tmp_path, monkeypatch):
+    """The server's operator sets an endpoint for every repo; one repo's
+    `review.endpoint: off` still keeps its code from the model."""
+    fake_github.add_pull(7, diff=DIFF)
+    fake_github.set_policy("review:\n  endpoint: off\n")
+    logs: list[str] = []
+    server = _review_through_the_app(fake_github, fake_model, tmp_path, monkeypatch, logs)
+    assert fake_model.calls == []
+    assert server.storage.export("acme/widget")["jobs"][-1]["outcome"] == "published"
+    [summary] = [c["body"] for c in fake_github.summary_comments(7)]
+    assert "Model: none configured; checks only." in summary
 
 
 def test_a_default_branch_with_no_commit_in_the_window_is_still_checked_out(tmp_path, monkeypatch):

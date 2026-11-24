@@ -8,7 +8,7 @@ version: 1
 
 review:
   model: local                 # local | hosted
-  endpoint: http://localhost:11434/v1   # any OpenAI-compatible server; this is Ollama's
+  endpoint: http://localhost:11434/v1   # any OpenAI-compatible server; this is Ollama's. off: the checks only, and no code goes to a model
   model_name: ""               # empty = qwen2.5-coder:7b
   profile: auto                # auto | small | large; auto picks from the model's size (up to ~20B is small)
   context_tokens: 16384        # profile: the model's context window; big diffs are split to fit it (large: 32768)

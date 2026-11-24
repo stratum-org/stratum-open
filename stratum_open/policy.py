@@ -32,7 +32,7 @@ REVIEW_EVENTS = ("opened", "synchronize", "reopened", "ready_for_review")
 @dataclass(frozen=True)
 class Review:
     model: str = "local"  # local | hosted
-    endpoint: str = "http://localhost:11434/v1"  # any OpenAI-compatible server; this is Ollama's
+    endpoint: str = "http://localhost:11434/v1"  # any OpenAI-compatible server; this is Ollama's. `off`: the checks only
     model_name: str = ""  # empty = DEFAULT_MODEL
     profile: str = "auto"  # auto | small | large: how much the review asks of the model
     context_tokens: int = 16384  # the model's context window; the diff is split to fit it
@@ -360,7 +360,7 @@ _INVALID = object()
 
 def _check(path: tuple[str, ...], value: Any, default: Any, warnings: list[str], errors: list[str]) -> Any:
     name = _dotted(path)
-    if path in (("boundaries", "new_edges"), ("review", "reasoning")) and value is False:
+    if path in (("boundaries", "new_edges"), ("review", "reasoning"), ("review", "endpoint")) and value is False:
         return "off"  # YAML reads an unquoted `off` as false
     if path == ("boundaries", "forbid"):
         entries = _forbid_entries(value)

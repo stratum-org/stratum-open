@@ -49,8 +49,8 @@ from stratum_open.checks.tools import listed
 from stratum_open.engine import snippet_of
 from stratum_open.findings import Finding
 from stratum_open.github.api import GitHubError
-from stratum_open.model import Reply, model_from_policy
-from stratum_open.policy import POLICY_PATH, parse_policy
+from stratum_open.model import Reply, model_from_policy, model_off
+from stratum_open.policy import POLICY_PATH, Policy, parse_policy
 from stratum_open.util import count
 
 TOOLS = ("check_local", "review_local", "explain_finding", "check_policy", "triage_pr")
@@ -222,7 +222,11 @@ class Tools:
             if progress is not None:
                 progress(done, f"{count(done, 'model call')} done")
 
-        return self._local(base, lambda policy: Deadline(model_from_policy(policy), timeout, stop, heard))
+        def make_model(policy: Policy) -> Deadline | None:
+            model = model_from_policy(policy)
+            return None if model is None else Deadline(model, timeout, stop, heard)
+
+        return self._local(base, make_model)
 
     def explain_finding(self, fingerprint: str) -> dict[str, Any]:
         with self._lock:
@@ -333,6 +337,8 @@ class Tools:
         notes += [f"policy: {e} Using the defaults." for e in result.policy.errors] + [f"policy: {w}" for w in result.policy.warnings]
         notes += result.check_notes
         model_json, summary = None, ""
+        if model is None and model_off(result.policy):
+            notes.append("The model is off (review.endpoint: off, or STRATUM_MODEL_ENDPOINT=off), so this has only the checks.")
         if model is not None:
             review = result.review
             answered = review is not None and review.ran

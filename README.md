@@ -56,6 +56,17 @@ To hear from Stratum sooner, set `review.early_checks: true` in your policy file
 
 The workflow uses `pull_request_target` so it can comment on PRs from forks. It's safe here because the workflow checks out your default branch, never the PR, and Stratum reads the PR only through GitHub's API: no code from the PR ever runs. Keep it that way: don't add a step that checks out the PR, unless you opt in to the [checks that build it](#go-vet-and-clippy-checks-that-build-the-pr), whose setup refuses forks and bots.
 
+### Checks only, without a model
+
+Stratum's checks need no model: secrets, workflow attacks, new and unknown dependencies, Bandit, Ruff and the rest of [what it does on each PR](#what-it-does-on-each-pr). To run them alone, turn the model off in `.stratum/policy.yml`:
+
+```yaml
+review:
+  endpoint: off
+```
+
+Then drop `ollama-model` from the workflow, or the runner still starts Ollama for nothing. To leave the policy alone, set the Action's `model-endpoint: off` instead. Either way, no PR's code goes to a model, the summary says the review is checks only, and `/stratum explain` and `/stratum ask`, which need a model, say so when they're used. `off` works the same in the GitHub App, in GitLab CI and in `stratum-open mcp`; `stratum-open review --no-model` does it for one run. Under the App, a repo's `off` holds even though the server sets `STRATUM_MODEL_ENDPOINT` for every repo.
+
 ### actionlint on the runner
 
 `checks.actionlint` needs `actionlint`, which GitHub's runners don't have. Without it the check is skipped and says nothing. To add it, put this step before Stratum's in your workflow. It installs the release the check was measured with, and stops if the download isn't that file:

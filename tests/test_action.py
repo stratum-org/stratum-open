@@ -47,6 +47,25 @@ def test_drafts_and_other_actions_are_skipped(tmp_path, monkeypatch, capsys):
     assert "Draft PR" in out and "Nothing to do for a labeled event." in out
 
 
+@pytest.mark.parametrize("policy, endpoint", [("review:\n  endpoint: off\n", ""), ("", "off")])
+def test_with_the_endpoint_off_the_action_posts_the_checks_and_calls_no_model(tmp_path, monkeypatch, policy, endpoint):
+    # Not run() and its stand-in model: model_from_policy itself has to build none. A model it built
+    # would call localhost, where nothing answers here, and the summary would report a model error.
+    gh = FakeGitHub(diff=DIFF)
+    if policy:
+        gh.files[(".stratum/policy.yml", "main")] = policy
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps(pr_payload()))
+    monkeypatch.setattr(action, "GitHub", lambda token, repo, api: gh)
+    env = {"GITHUB_EVENT_NAME": "pull_request_target", "GITHUB_EVENT_PATH": str(event), "GITHUB_REPOSITORY": "acme/widget",
+           "STRATUM_GITHUB_TOKEN": "t", "STRATUM_BOT_LOGIN": "stratum[bot]", "STRATUM_MODEL_ENDPOINT": endpoint}
+    assert action.main(env) == 0
+    summary = gh.issue_comments_[7][-1]["body"]
+    assert "Model: none configured; checks only." in summary
+    assert "couldn't reach the model" not in summary and "model error" not in summary.lower()
+    assert gh.checks
+
+
 def test_comment_events_run_commands(tmp_path, monkeypatch):
     gh = FakeGitHub(diff=DIFF)
     payload = {"action": "created", "repository": {"default_branch": "main"}, "issue": {"number": 7, "pull_request": {}},

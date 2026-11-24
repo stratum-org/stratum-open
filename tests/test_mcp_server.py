@@ -221,6 +221,15 @@ def test_review_local_with_no_model_answering_returns_the_checks_and_says_so(rep
 
 
 @needs_sdk
+def test_review_local_with_the_endpoint_off_returns_the_checks_and_says_why(repo, monkeypatch):
+    monkeypatch.setenv("STRATUM_MODEL_ENDPOINT", "off")
+    data = call("review_local", {"base": "main"}).structured_content
+    assert [f["rule"] for f in data["findings"]] == ["code/secret"]
+    assert data["model"] is None
+    assert "The model is off (review.endpoint: off, or STRATUM_MODEL_ENDPOINT=off), so this has only the checks." in data["notes"]
+
+
+@needs_sdk
 def test_review_local_names_the_commit_it_started_on_when_head_moves(repo, monkeypatch):
     class Committing(FakeModel):
         def complete(self, system, user, **kwargs):  # the agent commits while the model reads
